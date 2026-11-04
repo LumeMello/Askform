@@ -1,0 +1,25 @@
+﻿form ResponsavelLegalStep {
+  nomeResponsavel: string {
+    label = "Nome do Responsável";
+    required = true;
+  };
+  emailResponsavel: string {
+    label = "E-mail de Contato";
+    required = true;
+  };
+}
+
+form DadosCobrancaStep {
+  nomeCobranca: string {
+    label = "Nome na Fatura";
+    default = ResponsavelLegalStep.nomeResponsavel;
+  };
+  emailFaturamento: string {
+    label = "E-mail de Faturamento";
+    default = ResponsavelLegalStep.emailResponsavel;
+  };
+}
+
+wizard CadastroClienteWizard {
+  steps = [ResponsavelLegalStep, DadosCobrancaStep];
+}

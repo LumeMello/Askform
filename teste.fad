@@ -1,0 +1,33 @@
+﻿form ProdutoForm {
+    idProduto: integer {
+        required = true;
+    };
+    nomeProduto: string {
+        label = "Nome do Produto";
+        default = "Sem Nome";
+    };
+    preco: float {
+        default = 0.0;
+    };
+
+    validate nomeProduto {
+        min = 2;
+        max = 100;
+        pattern = "^[a-zA-Z0-9 ]+$";
+    }
+}
+
+api CatalogoApi {
+    POST "/produtos" {
+        consumes = ProdutoForm;
+        produces = uuid;
+    }
+    GET "/produtos/{idProduto}" {
+        consumes = ProdutoForm;
+        produces = string;
+    }
+}
+
+flow CadastroProdutoFlow {
+    ProdutoForm -> CatalogoApi.POST;
+}

@@ -1,0 +1,12 @@
+﻿form UsuarioForm {
+    idade: integer {
+        default = "vinte";
+    };
+}
+
+api UsuarioApi {
+    GET "/usuarios/{idInexistente}" {
+        consumes = UsuarioForm;
+        produces = string;
+    }
+}

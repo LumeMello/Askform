@@ -1,0 +1,1623 @@
+Created by PLY version 3.11 (http://www.dabeaz.com/ply)
+
+Grammar
+
+Rule 0     S' -> program
+Rule 1     program -> declarations
+Rule 2     declarations -> declarations declaration
+Rule 3     declarations -> declaration
+Rule 4     declaration -> form_decl
+Rule 5     declaration -> wizard_decl
+Rule 6     declaration -> api_decl
+Rule 7     declaration -> flow_decl
+Rule 8     form_decl -> FORM IDENTIFIER LBRACE form_elements RBRACE
+Rule 9     form_elements -> form_elements form_element
+Rule 10    form_elements -> empty
+Rule 11    form_element -> field_decl
+Rule 12    form_element -> validation_block
+Rule 13    field_decl -> IDENTIFIER COLON type_reference field_props_opt SEMICOLON
+Rule 14    type_reference -> primitive_type
+Rule 15    type_reference -> primitive_type LBRACKET RBRACKET
+Rule 16    primitive_type -> TYPE_STRING
+Rule 17    primitive_type -> TYPE_INT
+Rule 18    primitive_type -> TYPE_FLOAT
+Rule 19    primitive_type -> TYPE_BOOL
+Rule 20    primitive_type -> TYPE_DATE
+Rule 21    primitive_type -> TYPE_UUID
+Rule 22    field_props_opt -> LBRACE field_props RBRACE
+Rule 23    field_props_opt -> empty
+Rule 24    field_props -> field_props field_prop
+Rule 25    field_props -> empty
+Rule 26    field_prop -> LABEL EQUALS STRING_LIT SEMICOLON
+Rule 27    field_prop -> DEFAULT EQUALS literal_val SEMICOLON
+Rule 28    field_prop -> REQUIRED EQUALS boolean_literal SEMICOLON
+Rule 29    field_ref -> IDENTIFIER DOT IDENTIFIER
+Rule 30    validation_block -> VALIDATE IDENTIFIER LBRACE validation_rules RBRACE
+Rule 31    validation_rules -> validation_rules validation_rule
+Rule 32    validation_rules -> empty
+Rule 33    validation_rule -> MIN EQUALS number_lit SEMICOLON
+Rule 34    validation_rule -> MAX EQUALS number_lit SEMICOLON
+Rule 35    validation_rule -> PATTERN EQUALS STRING_LIT SEMICOLON
+Rule 36    validation_rule -> MESSAGE EQUALS STRING_LIT SEMICOLON
+Rule 37    wizard_decl -> WIZARD IDENTIFIER LBRACE wizard_elements RBRACE
+Rule 38    wizard_elements -> wizard_elements wizard_element
+Rule 39    wizard_elements -> empty
+Rule 40    wizard_element -> STEPS EQUALS LBRACKET step_list RBRACKET SEMICOLON
+Rule 41    wizard_element -> SUBMIT EQUALS IDENTIFIER DOT http_verb SEMICOLON
+Rule 42    step_list -> step_list COMMA IDENTIFIER
+Rule 43    step_list -> IDENTIFIER
+Rule 44    api_decl -> API IDENTIFIER LBRACE endpoint_list RBRACE
+Rule 45    endpoint_list -> endpoint_list endpoint_decl
+Rule 46    endpoint_list -> empty
+Rule 47    endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props RBRACE
+Rule 48    http_verb -> HTTP_GET
+Rule 49    http_verb -> HTTP_POST
+Rule 50    http_verb -> HTTP_PUT
+Rule 51    http_verb -> HTTP_DELETE
+Rule 52    http_verb -> HTTP_PATCH
+Rule 53    endpoint_props -> endpoint_props endpoint_prop
+Rule 54    endpoint_props -> empty
+Rule 55    endpoint_prop -> CONSUMES EQUALS IDENTIFIER SEMICOLON
+Rule 56    endpoint_prop -> PRODUCES EQUALS primitive_type SEMICOLON
+Rule 57    endpoint_prop -> HEADERS LBRACE header_list RBRACE SEMICOLON
+Rule 58    header_list -> header_list STRING_LIT COLON STRING_LIT SEMICOLON
+Rule 59    header_list -> empty
+Rule 60    flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE
+Rule 61    number_lit -> INT_LIT
+Rule 62    number_lit -> FLOAT_LIT
+Rule 63    boolean_literal -> TRUE
+Rule 64    boolean_literal -> FALSE
+Rule 65    literal_val -> STRING_LIT
+Rule 66    literal_val -> number_lit
+Rule 67    literal_val -> boolean_literal
+Rule 68    literal_val -> field_ref
+Rule 69    empty -> <empty>
+
+Terminals, with rules where they appear
+
+API                  : 44
+ARROW                : 60
+COLON                : 13 58
+COMMA                : 42
+CONSUMES             : 55
+DEFAULT              : 27
+DOT                  : 29 41 60
+EQUALS               : 26 27 28 33 34 35 36 40 41 55 56
+FALSE                : 64
+FLOAT_LIT            : 62
+FLOW                 : 60
+FORM                 : 8
+HEADERS              : 57
+HTTP_DELETE          : 51
+HTTP_GET             : 48
+HTTP_PATCH           : 52
+HTTP_POST            : 49
+HTTP_PUT             : 50
+IDENTIFIER           : 8 13 29 29 30 37 41 42 43 44 55 60 60 60
+INT_LIT              : 61
+LABEL                : 26
+LBRACE               : 8 22 30 37 44 47 57 60
+LBRACKET             : 15 40
+MAX                  : 34
+MESSAGE              : 36
+MIN                  : 33
+PATTERN              : 35
+PRODUCES             : 56
+RBRACE               : 8 22 30 37 44 47 57 60
+RBRACKET             : 15 40
+REQUIRED             : 28
+SEMICOLON            : 13 26 27 28 33 34 35 36 40 41 55 56 57 58 60
+STEPS                : 40
+STRING_LIT           : 26 35 36 47 58 58 65
+SUBMIT               : 41
+TRUE                 : 63
+TYPE_BOOL            : 19
+TYPE_DATE            : 20
+TYPE_FLOAT           : 18
+TYPE_INT             : 17
+TYPE_STRING          : 16
+TYPE_UUID            : 21
+VALIDATE             : 30
+WIZARD               : 37
+error                : 
+
+Nonterminals, with rules where they appear
+
+api_decl             : 6
+boolean_literal      : 28 67
+declaration          : 2 3
+declarations         : 1 2
+empty                : 10 23 25 32 39 46 54 59
+endpoint_decl        : 45
+endpoint_list        : 44 45
+endpoint_prop        : 53
+endpoint_props       : 47 53
+field_decl           : 11
+field_prop           : 24
+field_props          : 22 24
+field_props_opt      : 13
+field_ref            : 68
+flow_decl            : 7
+form_decl            : 4
+form_element         : 9
+form_elements        : 8 9
+header_list          : 57 58
+http_verb            : 41 47 60
+literal_val          : 27
+number_lit           : 33 34 66
+primitive_type       : 14 15 56
+program              : 0
+step_list            : 40 42
+type_reference       : 13
+validation_block     : 12
+validation_rule      : 31
+validation_rules     : 30 31
+wizard_decl          : 5
+wizard_element       : 38
+wizard_elements      : 37 38
+
+Parsing method: LALR
+
+state 0
+
+    (0) S' -> . program
+    (1) program -> . declarations
+    (2) declarations -> . declarations declaration
+    (3) declarations -> . declaration
+    (4) declaration -> . form_decl
+    (5) declaration -> . wizard_decl
+    (6) declaration -> . api_decl
+    (7) declaration -> . flow_decl
+    (8) form_decl -> . FORM IDENTIFIER LBRACE form_elements RBRACE
+    (37) wizard_decl -> . WIZARD IDENTIFIER LBRACE wizard_elements RBRACE
+    (44) api_decl -> . API IDENTIFIER LBRACE endpoint_list RBRACE
+    (60) flow_decl -> . FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE
+
+    FORM            shift and go to state 8
+    WIZARD          shift and go to state 9
+    API             shift and go to state 10
+    FLOW            shift and go to state 11
+
+    program                        shift and go to state 1
+    declarations                   shift and go to state 2
+    declaration                    shift and go to state 3
+    form_decl                      shift and go to state 4
+    wizard_decl                    shift and go to state 5
+    api_decl                       shift and go to state 6
+    flow_decl                      shift and go to state 7
+
+state 1
+
+    (0) S' -> program .
+
+
+
+state 2
+
+    (1) program -> declarations .
+    (2) declarations -> declarations . declaration
+    (4) declaration -> . form_decl
+    (5) declaration -> . wizard_decl
+    (6) declaration -> . api_decl
+    (7) declaration -> . flow_decl
+    (8) form_decl -> . FORM IDENTIFIER LBRACE form_elements RBRACE
+    (37) wizard_decl -> . WIZARD IDENTIFIER LBRACE wizard_elements RBRACE
+    (44) api_decl -> . API IDENTIFIER LBRACE endpoint_list RBRACE
+    (60) flow_decl -> . FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE
+
+    $end            reduce using rule 1 (program -> declarations .)
+    FORM            shift and go to state 8
+    WIZARD          shift and go to state 9
+    API             shift and go to state 10
+    FLOW            shift and go to state 11
+
+    declaration                    shift and go to state 12
+    form_decl                      shift and go to state 4
+    wizard_decl                    shift and go to state 5
+    api_decl                       shift and go to state 6
+    flow_decl                      shift and go to state 7
+
+state 3
+
+    (3) declarations -> declaration .
+
+    FORM            reduce using rule 3 (declarations -> declaration .)
+    WIZARD          reduce using rule 3 (declarations -> declaration .)
+    API             reduce using rule 3 (declarations -> declaration .)
+    FLOW            reduce using rule 3 (declarations -> declaration .)
+    $end            reduce using rule 3 (declarations -> declaration .)
+
+
+state 4
+
+    (4) declaration -> form_decl .
+
+    FORM            reduce using rule 4 (declaration -> form_decl .)
+    WIZARD          reduce using rule 4 (declaration -> form_decl .)
+    API             reduce using rule 4 (declaration -> form_decl .)
+    FLOW            reduce using rule 4 (declaration -> form_decl .)
+    $end            reduce using rule 4 (declaration -> form_decl .)
+
+
+state 5
+
+    (5) declaration -> wizard_decl .
+
+    FORM            reduce using rule 5 (declaration -> wizard_decl .)
+    WIZARD          reduce using rule 5 (declaration -> wizard_decl .)
+    API             reduce using rule 5 (declaration -> wizard_decl .)
+    FLOW            reduce using rule 5 (declaration -> wizard_decl .)
+    $end            reduce using rule 5 (declaration -> wizard_decl .)
+
+
+state 6
+
+    (6) declaration -> api_decl .
+
+    FORM            reduce using rule 6 (declaration -> api_decl .)
+    WIZARD          reduce using rule 6 (declaration -> api_decl .)
+    API             reduce using rule 6 (declaration -> api_decl .)
+    FLOW            reduce using rule 6 (declaration -> api_decl .)
+    $end            reduce using rule 6 (declaration -> api_decl .)
+
+
+state 7
+
+    (7) declaration -> flow_decl .
+
+    FORM            reduce using rule 7 (declaration -> flow_decl .)
+    WIZARD          reduce using rule 7 (declaration -> flow_decl .)
+    API             reduce using rule 7 (declaration -> flow_decl .)
+    FLOW            reduce using rule 7 (declaration -> flow_decl .)
+    $end            reduce using rule 7 (declaration -> flow_decl .)
+
+
+state 8
+
+    (8) form_decl -> FORM . IDENTIFIER LBRACE form_elements RBRACE
+
+    IDENTIFIER      shift and go to state 13
+
+
+state 9
+
+    (37) wizard_decl -> WIZARD . IDENTIFIER LBRACE wizard_elements RBRACE
+
+    IDENTIFIER      shift and go to state 14
+
+
+state 10
+
+    (44) api_decl -> API . IDENTIFIER LBRACE endpoint_list RBRACE
+
+    IDENTIFIER      shift and go to state 15
+
+
+state 11
+
+    (60) flow_decl -> FLOW . IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE
+
+    IDENTIFIER      shift and go to state 16
+
+
+state 12
+
+    (2) declarations -> declarations declaration .
+
+    FORM            reduce using rule 2 (declarations -> declarations declaration .)
+    WIZARD          reduce using rule 2 (declarations -> declarations declaration .)
+    API             reduce using rule 2 (declarations -> declarations declaration .)
+    FLOW            reduce using rule 2 (declarations -> declarations declaration .)
+    $end            reduce using rule 2 (declarations -> declarations declaration .)
+
+
+state 13
+
+    (8) form_decl -> FORM IDENTIFIER . LBRACE form_elements RBRACE
+
+    LBRACE          shift and go to state 17
+
+
+state 14
+
+    (37) wizard_decl -> WIZARD IDENTIFIER . LBRACE wizard_elements RBRACE
+
+    LBRACE          shift and go to state 18
+
+
+state 15
+
+    (44) api_decl -> API IDENTIFIER . LBRACE endpoint_list RBRACE
+
+    LBRACE          shift and go to state 19
+
+
+state 16
+
+    (60) flow_decl -> FLOW IDENTIFIER . LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE
+
+    LBRACE          shift and go to state 20
+
+
+state 17
+
+    (8) form_decl -> FORM IDENTIFIER LBRACE . form_elements RBRACE
+    (9) form_elements -> . form_elements form_element
+    (10) form_elements -> . empty
+    (69) empty -> .
+
+    RBRACE          reduce using rule 69 (empty -> .)
+    IDENTIFIER      reduce using rule 69 (empty -> .)
+    VALIDATE        reduce using rule 69 (empty -> .)
+
+    form_elements                  shift and go to state 21
+    empty                          shift and go to state 22
+
+state 18
+
+    (37) wizard_decl -> WIZARD IDENTIFIER LBRACE . wizard_elements RBRACE
+    (38) wizard_elements -> . wizard_elements wizard_element
+    (39) wizard_elements -> . empty
+    (69) empty -> .
+
+    RBRACE          reduce using rule 69 (empty -> .)
+    STEPS           reduce using rule 69 (empty -> .)
+    SUBMIT          reduce using rule 69 (empty -> .)
+
+    wizard_elements                shift and go to state 23
+    empty                          shift and go to state 24
+
+state 19
+
+    (44) api_decl -> API IDENTIFIER LBRACE . endpoint_list RBRACE
+    (45) endpoint_list -> . endpoint_list endpoint_decl
+    (46) endpoint_list -> . empty
+    (69) empty -> .
+
+    RBRACE          reduce using rule 69 (empty -> .)
+    HTTP_GET        reduce using rule 69 (empty -> .)
+    HTTP_POST       reduce using rule 69 (empty -> .)
+    HTTP_PUT        reduce using rule 69 (empty -> .)
+    HTTP_DELETE     reduce using rule 69 (empty -> .)
+    HTTP_PATCH      reduce using rule 69 (empty -> .)
+
+    endpoint_list                  shift and go to state 25
+    empty                          shift and go to state 26
+
+state 20
+
+    (60) flow_decl -> FLOW IDENTIFIER LBRACE . IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE
+
+    IDENTIFIER      shift and go to state 27
+
+
+state 21
+
+    (8) form_decl -> FORM IDENTIFIER LBRACE form_elements . RBRACE
+    (9) form_elements -> form_elements . form_element
+    (11) form_element -> . field_decl
+    (12) form_element -> . validation_block
+    (13) field_decl -> . IDENTIFIER COLON type_reference field_props_opt SEMICOLON
+    (30) validation_block -> . VALIDATE IDENTIFIER LBRACE validation_rules RBRACE
+
+    RBRACE          shift and go to state 29
+    IDENTIFIER      shift and go to state 28
+    VALIDATE        shift and go to state 33
+
+    form_element                   shift and go to state 30
+    field_decl                     shift and go to state 31
+    validation_block               shift and go to state 32
+
+state 22
+
+    (10) form_elements -> empty .
+
+    RBRACE          reduce using rule 10 (form_elements -> empty .)
+    IDENTIFIER      reduce using rule 10 (form_elements -> empty .)
+    VALIDATE        reduce using rule 10 (form_elements -> empty .)
+
+
+state 23
+
+    (37) wizard_decl -> WIZARD IDENTIFIER LBRACE wizard_elements . RBRACE
+    (38) wizard_elements -> wizard_elements . wizard_element
+    (40) wizard_element -> . STEPS EQUALS LBRACKET step_list RBRACKET SEMICOLON
+    (41) wizard_element -> . SUBMIT EQUALS IDENTIFIER DOT http_verb SEMICOLON
+
+    RBRACE          shift and go to state 34
+    STEPS           shift and go to state 36
+    SUBMIT          shift and go to state 37
+
+    wizard_element                 shift and go to state 35
+
+state 24
+
+    (39) wizard_elements -> empty .
+
+    RBRACE          reduce using rule 39 (wizard_elements -> empty .)
+    STEPS           reduce using rule 39 (wizard_elements -> empty .)
+    SUBMIT          reduce using rule 39 (wizard_elements -> empty .)
+
+
+state 25
+
+    (44) api_decl -> API IDENTIFIER LBRACE endpoint_list . RBRACE
+    (45) endpoint_list -> endpoint_list . endpoint_decl
+    (47) endpoint_decl -> . http_verb STRING_LIT LBRACE endpoint_props RBRACE
+    (48) http_verb -> . HTTP_GET
+    (49) http_verb -> . HTTP_POST
+    (50) http_verb -> . HTTP_PUT
+    (51) http_verb -> . HTTP_DELETE
+    (52) http_verb -> . HTTP_PATCH
+
+    RBRACE          shift and go to state 38
+    HTTP_GET        shift and go to state 41
+    HTTP_POST       shift and go to state 42
+    HTTP_PUT        shift and go to state 43
+    HTTP_DELETE     shift and go to state 44
+    HTTP_PATCH      shift and go to state 45
+
+    endpoint_decl                  shift and go to state 39
+    http_verb                      shift and go to state 40
+
+state 26
+
+    (46) endpoint_list -> empty .
+
+    RBRACE          reduce using rule 46 (endpoint_list -> empty .)
+    HTTP_GET        reduce using rule 46 (endpoint_list -> empty .)
+    HTTP_POST       reduce using rule 46 (endpoint_list -> empty .)
+    HTTP_PUT        reduce using rule 46 (endpoint_list -> empty .)
+    HTTP_DELETE     reduce using rule 46 (endpoint_list -> empty .)
+    HTTP_PATCH      reduce using rule 46 (endpoint_list -> empty .)
+
+
+state 27
+
+    (60) flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER . ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE
+
+    ARROW           shift and go to state 46
+
+
+state 28
+
+    (13) field_decl -> IDENTIFIER . COLON type_reference field_props_opt SEMICOLON
+
+    COLON           shift and go to state 47
+
+
+state 29
+
+    (8) form_decl -> FORM IDENTIFIER LBRACE form_elements RBRACE .
+
+    FORM            reduce using rule 8 (form_decl -> FORM IDENTIFIER LBRACE form_elements RBRACE .)
+    WIZARD          reduce using rule 8 (form_decl -> FORM IDENTIFIER LBRACE form_elements RBRACE .)
+    API             reduce using rule 8 (form_decl -> FORM IDENTIFIER LBRACE form_elements RBRACE .)
+    FLOW            reduce using rule 8 (form_decl -> FORM IDENTIFIER LBRACE form_elements RBRACE .)
+    $end            reduce using rule 8 (form_decl -> FORM IDENTIFIER LBRACE form_elements RBRACE .)
+
+
+state 30
+
+    (9) form_elements -> form_elements form_element .
+
+    RBRACE          reduce using rule 9 (form_elements -> form_elements form_element .)
+    IDENTIFIER      reduce using rule 9 (form_elements -> form_elements form_element .)
+    VALIDATE        reduce using rule 9 (form_elements -> form_elements form_element .)
+
+
+state 31
+
+    (11) form_element -> field_decl .
+
+    RBRACE          reduce using rule 11 (form_element -> field_decl .)
+    IDENTIFIER      reduce using rule 11 (form_element -> field_decl .)
+    VALIDATE        reduce using rule 11 (form_element -> field_decl .)
+
+
+state 32
+
+    (12) form_element -> validation_block .
+
+    RBRACE          reduce using rule 12 (form_element -> validation_block .)
+    IDENTIFIER      reduce using rule 12 (form_element -> validation_block .)
+    VALIDATE        reduce using rule 12 (form_element -> validation_block .)
+
+
+state 33
+
+    (30) validation_block -> VALIDATE . IDENTIFIER LBRACE validation_rules RBRACE
+
+    IDENTIFIER      shift and go to state 48
+
+
+state 34
+
+    (37) wizard_decl -> WIZARD IDENTIFIER LBRACE wizard_elements RBRACE .
+
+    FORM            reduce using rule 37 (wizard_decl -> WIZARD IDENTIFIER LBRACE wizard_elements RBRACE .)
+    WIZARD          reduce using rule 37 (wizard_decl -> WIZARD IDENTIFIER LBRACE wizard_elements RBRACE .)
+    API             reduce using rule 37 (wizard_decl -> WIZARD IDENTIFIER LBRACE wizard_elements RBRACE .)
+    FLOW            reduce using rule 37 (wizard_decl -> WIZARD IDENTIFIER LBRACE wizard_elements RBRACE .)
+    $end            reduce using rule 37 (wizard_decl -> WIZARD IDENTIFIER LBRACE wizard_elements RBRACE .)
+
+
+state 35
+
+    (38) wizard_elements -> wizard_elements wizard_element .
+
+    RBRACE          reduce using rule 38 (wizard_elements -> wizard_elements wizard_element .)
+    STEPS           reduce using rule 38 (wizard_elements -> wizard_elements wizard_element .)
+    SUBMIT          reduce using rule 38 (wizard_elements -> wizard_elements wizard_element .)
+
+
+state 36
+
+    (40) wizard_element -> STEPS . EQUALS LBRACKET step_list RBRACKET SEMICOLON
+
+    EQUALS          shift and go to state 49
+
+
+state 37
+
+    (41) wizard_element -> SUBMIT . EQUALS IDENTIFIER DOT http_verb SEMICOLON
+
+    EQUALS          shift and go to state 50
+
+
+state 38
+
+    (44) api_decl -> API IDENTIFIER LBRACE endpoint_list RBRACE .
+
+    FORM            reduce using rule 44 (api_decl -> API IDENTIFIER LBRACE endpoint_list RBRACE .)
+    WIZARD          reduce using rule 44 (api_decl -> API IDENTIFIER LBRACE endpoint_list RBRACE .)
+    API             reduce using rule 44 (api_decl -> API IDENTIFIER LBRACE endpoint_list RBRACE .)
+    FLOW            reduce using rule 44 (api_decl -> API IDENTIFIER LBRACE endpoint_list RBRACE .)
+    $end            reduce using rule 44 (api_decl -> API IDENTIFIER LBRACE endpoint_list RBRACE .)
+
+
+state 39
+
+    (45) endpoint_list -> endpoint_list endpoint_decl .
+
+    RBRACE          reduce using rule 45 (endpoint_list -> endpoint_list endpoint_decl .)
+    HTTP_GET        reduce using rule 45 (endpoint_list -> endpoint_list endpoint_decl .)
+    HTTP_POST       reduce using rule 45 (endpoint_list -> endpoint_list endpoint_decl .)
+    HTTP_PUT        reduce using rule 45 (endpoint_list -> endpoint_list endpoint_decl .)
+    HTTP_DELETE     reduce using rule 45 (endpoint_list -> endpoint_list endpoint_decl .)
+    HTTP_PATCH      reduce using rule 45 (endpoint_list -> endpoint_list endpoint_decl .)
+
+
+state 40
+
+    (47) endpoint_decl -> http_verb . STRING_LIT LBRACE endpoint_props RBRACE
+
+    STRING_LIT      shift and go to state 51
+
+
+state 41
+
+    (48) http_verb -> HTTP_GET .
+
+    STRING_LIT      reduce using rule 48 (http_verb -> HTTP_GET .)
+    SEMICOLON       reduce using rule 48 (http_verb -> HTTP_GET .)
+
+
+state 42
+
+    (49) http_verb -> HTTP_POST .
+
+    STRING_LIT      reduce using rule 49 (http_verb -> HTTP_POST .)
+    SEMICOLON       reduce using rule 49 (http_verb -> HTTP_POST .)
+
+
+state 43
+
+    (50) http_verb -> HTTP_PUT .
+
+    STRING_LIT      reduce using rule 50 (http_verb -> HTTP_PUT .)
+    SEMICOLON       reduce using rule 50 (http_verb -> HTTP_PUT .)
+
+
+state 44
+
+    (51) http_verb -> HTTP_DELETE .
+
+    STRING_LIT      reduce using rule 51 (http_verb -> HTTP_DELETE .)
+    SEMICOLON       reduce using rule 51 (http_verb -> HTTP_DELETE .)
+
+
+state 45
+
+    (52) http_verb -> HTTP_PATCH .
+
+    STRING_LIT      reduce using rule 52 (http_verb -> HTTP_PATCH .)
+    SEMICOLON       reduce using rule 52 (http_verb -> HTTP_PATCH .)
+
+
+state 46
+
+    (60) flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW . IDENTIFIER DOT http_verb SEMICOLON RBRACE
+
+    IDENTIFIER      shift and go to state 52
+
+
+state 47
+
+    (13) field_decl -> IDENTIFIER COLON . type_reference field_props_opt SEMICOLON
+    (14) type_reference -> . primitive_type
+    (15) type_reference -> . primitive_type LBRACKET RBRACKET
+    (16) primitive_type -> . TYPE_STRING
+    (17) primitive_type -> . TYPE_INT
+    (18) primitive_type -> . TYPE_FLOAT
+    (19) primitive_type -> . TYPE_BOOL
+    (20) primitive_type -> . TYPE_DATE
+    (21) primitive_type -> . TYPE_UUID
+
+    TYPE_STRING     shift and go to state 55
+    TYPE_INT        shift and go to state 56
+    TYPE_FLOAT      shift and go to state 57
+    TYPE_BOOL       shift and go to state 58
+    TYPE_DATE       shift and go to state 59
+    TYPE_UUID       shift and go to state 60
+
+    type_reference                 shift and go to state 53
+    primitive_type                 shift and go to state 54
+
+state 48
+
+    (30) validation_block -> VALIDATE IDENTIFIER . LBRACE validation_rules RBRACE
+
+    LBRACE          shift and go to state 61
+
+
+state 49
+
+    (40) wizard_element -> STEPS EQUALS . LBRACKET step_list RBRACKET SEMICOLON
+
+    LBRACKET        shift and go to state 62
+
+
+state 50
+
+    (41) wizard_element -> SUBMIT EQUALS . IDENTIFIER DOT http_verb SEMICOLON
+
+    IDENTIFIER      shift and go to state 63
+
+
+state 51
+
+    (47) endpoint_decl -> http_verb STRING_LIT . LBRACE endpoint_props RBRACE
+
+    LBRACE          shift and go to state 64
+
+
+state 52
+
+    (60) flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER . DOT http_verb SEMICOLON RBRACE
+
+    DOT             shift and go to state 65
+
+
+state 53
+
+    (13) field_decl -> IDENTIFIER COLON type_reference . field_props_opt SEMICOLON
+    (22) field_props_opt -> . LBRACE field_props RBRACE
+    (23) field_props_opt -> . empty
+    (69) empty -> .
+
+    LBRACE          shift and go to state 67
+    SEMICOLON       reduce using rule 69 (empty -> .)
+
+    field_props_opt                shift and go to state 66
+    empty                          shift and go to state 68
+
+state 54
+
+    (14) type_reference -> primitive_type .
+    (15) type_reference -> primitive_type . LBRACKET RBRACKET
+
+    LBRACE          reduce using rule 14 (type_reference -> primitive_type .)
+    SEMICOLON       reduce using rule 14 (type_reference -> primitive_type .)
+    LBRACKET        shift and go to state 69
+
+
+state 55
+
+    (16) primitive_type -> TYPE_STRING .
+
+    LBRACKET        reduce using rule 16 (primitive_type -> TYPE_STRING .)
+    LBRACE          reduce using rule 16 (primitive_type -> TYPE_STRING .)
+    SEMICOLON       reduce using rule 16 (primitive_type -> TYPE_STRING .)
+
+
+state 56
+
+    (17) primitive_type -> TYPE_INT .
+
+    LBRACKET        reduce using rule 17 (primitive_type -> TYPE_INT .)
+    LBRACE          reduce using rule 17 (primitive_type -> TYPE_INT .)
+    SEMICOLON       reduce using rule 17 (primitive_type -> TYPE_INT .)
+
+
+state 57
+
+    (18) primitive_type -> TYPE_FLOAT .
+
+    LBRACKET        reduce using rule 18 (primitive_type -> TYPE_FLOAT .)
+    LBRACE          reduce using rule 18 (primitive_type -> TYPE_FLOAT .)
+    SEMICOLON       reduce using rule 18 (primitive_type -> TYPE_FLOAT .)
+
+
+state 58
+
+    (19) primitive_type -> TYPE_BOOL .
+
+    LBRACKET        reduce using rule 19 (primitive_type -> TYPE_BOOL .)
+    LBRACE          reduce using rule 19 (primitive_type -> TYPE_BOOL .)
+    SEMICOLON       reduce using rule 19 (primitive_type -> TYPE_BOOL .)
+
+
+state 59
+
+    (20) primitive_type -> TYPE_DATE .
+
+    LBRACKET        reduce using rule 20 (primitive_type -> TYPE_DATE .)
+    LBRACE          reduce using rule 20 (primitive_type -> TYPE_DATE .)
+    SEMICOLON       reduce using rule 20 (primitive_type -> TYPE_DATE .)
+
+
+state 60
+
+    (21) primitive_type -> TYPE_UUID .
+
+    LBRACKET        reduce using rule 21 (primitive_type -> TYPE_UUID .)
+    LBRACE          reduce using rule 21 (primitive_type -> TYPE_UUID .)
+    SEMICOLON       reduce using rule 21 (primitive_type -> TYPE_UUID .)
+
+
+state 61
+
+    (30) validation_block -> VALIDATE IDENTIFIER LBRACE . validation_rules RBRACE
+    (31) validation_rules -> . validation_rules validation_rule
+    (32) validation_rules -> . empty
+    (69) empty -> .
+
+    RBRACE          reduce using rule 69 (empty -> .)
+    MIN             reduce using rule 69 (empty -> .)
+    MAX             reduce using rule 69 (empty -> .)
+    PATTERN         reduce using rule 69 (empty -> .)
+    MESSAGE         reduce using rule 69 (empty -> .)
+
+    validation_rules               shift and go to state 70
+    empty                          shift and go to state 71
+
+state 62
+
+    (40) wizard_element -> STEPS EQUALS LBRACKET . step_list RBRACKET SEMICOLON
+    (42) step_list -> . step_list COMMA IDENTIFIER
+    (43) step_list -> . IDENTIFIER
+
+    IDENTIFIER      shift and go to state 73
+
+    step_list                      shift and go to state 72
+
+state 63
+
+    (41) wizard_element -> SUBMIT EQUALS IDENTIFIER . DOT http_verb SEMICOLON
+
+    DOT             shift and go to state 74
+
+
+state 64
+
+    (47) endpoint_decl -> http_verb STRING_LIT LBRACE . endpoint_props RBRACE
+    (53) endpoint_props -> . endpoint_props endpoint_prop
+    (54) endpoint_props -> . empty
+    (69) empty -> .
+
+    RBRACE          reduce using rule 69 (empty -> .)
+    CONSUMES        reduce using rule 69 (empty -> .)
+    PRODUCES        reduce using rule 69 (empty -> .)
+    HEADERS         reduce using rule 69 (empty -> .)
+
+    endpoint_props                 shift and go to state 75
+    empty                          shift and go to state 76
+
+state 65
+
+    (60) flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT . http_verb SEMICOLON RBRACE
+    (48) http_verb -> . HTTP_GET
+    (49) http_verb -> . HTTP_POST
+    (50) http_verb -> . HTTP_PUT
+    (51) http_verb -> . HTTP_DELETE
+    (52) http_verb -> . HTTP_PATCH
+
+    HTTP_GET        shift and go to state 41
+    HTTP_POST       shift and go to state 42
+    HTTP_PUT        shift and go to state 43
+    HTTP_DELETE     shift and go to state 44
+    HTTP_PATCH      shift and go to state 45
+
+    http_verb                      shift and go to state 77
+
+state 66
+
+    (13) field_decl -> IDENTIFIER COLON type_reference field_props_opt . SEMICOLON
+
+    SEMICOLON       shift and go to state 78
+
+
+state 67
+
+    (22) field_props_opt -> LBRACE . field_props RBRACE
+    (24) field_props -> . field_props field_prop
+    (25) field_props -> . empty
+    (69) empty -> .
+
+    RBRACE          reduce using rule 69 (empty -> .)
+    LABEL           reduce using rule 69 (empty -> .)
+    DEFAULT         reduce using rule 69 (empty -> .)
+    REQUIRED        reduce using rule 69 (empty -> .)
+
+    field_props                    shift and go to state 79
+    empty                          shift and go to state 80
+
+state 68
+
+    (23) field_props_opt -> empty .
+
+    SEMICOLON       reduce using rule 23 (field_props_opt -> empty .)
+
+
+state 69
+
+    (15) type_reference -> primitive_type LBRACKET . RBRACKET
+
+    RBRACKET        shift and go to state 81
+
+
+state 70
+
+    (30) validation_block -> VALIDATE IDENTIFIER LBRACE validation_rules . RBRACE
+    (31) validation_rules -> validation_rules . validation_rule
+    (33) validation_rule -> . MIN EQUALS number_lit SEMICOLON
+    (34) validation_rule -> . MAX EQUALS number_lit SEMICOLON
+    (35) validation_rule -> . PATTERN EQUALS STRING_LIT SEMICOLON
+    (36) validation_rule -> . MESSAGE EQUALS STRING_LIT SEMICOLON
+
+    RBRACE          shift and go to state 82
+    MIN             shift and go to state 84
+    MAX             shift and go to state 85
+    PATTERN         shift and go to state 86
+    MESSAGE         shift and go to state 87
+
+    validation_rule                shift and go to state 83
+
+state 71
+
+    (32) validation_rules -> empty .
+
+    RBRACE          reduce using rule 32 (validation_rules -> empty .)
+    MIN             reduce using rule 32 (validation_rules -> empty .)
+    MAX             reduce using rule 32 (validation_rules -> empty .)
+    PATTERN         reduce using rule 32 (validation_rules -> empty .)
+    MESSAGE         reduce using rule 32 (validation_rules -> empty .)
+
+
+state 72
+
+    (40) wizard_element -> STEPS EQUALS LBRACKET step_list . RBRACKET SEMICOLON
+    (42) step_list -> step_list . COMMA IDENTIFIER
+
+    RBRACKET        shift and go to state 88
+    COMMA           shift and go to state 89
+
+
+state 73
+
+    (43) step_list -> IDENTIFIER .
+
+    RBRACKET        reduce using rule 43 (step_list -> IDENTIFIER .)
+    COMMA           reduce using rule 43 (step_list -> IDENTIFIER .)
+
+
+state 74
+
+    (41) wizard_element -> SUBMIT EQUALS IDENTIFIER DOT . http_verb SEMICOLON
+    (48) http_verb -> . HTTP_GET
+    (49) http_verb -> . HTTP_POST
+    (50) http_verb -> . HTTP_PUT
+    (51) http_verb -> . HTTP_DELETE
+    (52) http_verb -> . HTTP_PATCH
+
+    HTTP_GET        shift and go to state 41
+    HTTP_POST       shift and go to state 42
+    HTTP_PUT        shift and go to state 43
+    HTTP_DELETE     shift and go to state 44
+    HTTP_PATCH      shift and go to state 45
+
+    http_verb                      shift and go to state 90
+
+state 75
+
+    (47) endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props . RBRACE
+    (53) endpoint_props -> endpoint_props . endpoint_prop
+    (55) endpoint_prop -> . CONSUMES EQUALS IDENTIFIER SEMICOLON
+    (56) endpoint_prop -> . PRODUCES EQUALS primitive_type SEMICOLON
+    (57) endpoint_prop -> . HEADERS LBRACE header_list RBRACE SEMICOLON
+
+    RBRACE          shift and go to state 91
+    CONSUMES        shift and go to state 93
+    PRODUCES        shift and go to state 94
+    HEADERS         shift and go to state 95
+
+    endpoint_prop                  shift and go to state 92
+
+state 76
+
+    (54) endpoint_props -> empty .
+
+    RBRACE          reduce using rule 54 (endpoint_props -> empty .)
+    CONSUMES        reduce using rule 54 (endpoint_props -> empty .)
+    PRODUCES        reduce using rule 54 (endpoint_props -> empty .)
+    HEADERS         reduce using rule 54 (endpoint_props -> empty .)
+
+
+state 77
+
+    (60) flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb . SEMICOLON RBRACE
+
+    SEMICOLON       shift and go to state 96
+
+
+state 78
+
+    (13) field_decl -> IDENTIFIER COLON type_reference field_props_opt SEMICOLON .
+
+    RBRACE          reduce using rule 13 (field_decl -> IDENTIFIER COLON type_reference field_props_opt SEMICOLON .)
+    IDENTIFIER      reduce using rule 13 (field_decl -> IDENTIFIER COLON type_reference field_props_opt SEMICOLON .)
+    VALIDATE        reduce using rule 13 (field_decl -> IDENTIFIER COLON type_reference field_props_opt SEMICOLON .)
+
+
+state 79
+
+    (22) field_props_opt -> LBRACE field_props . RBRACE
+    (24) field_props -> field_props . field_prop
+    (26) field_prop -> . LABEL EQUALS STRING_LIT SEMICOLON
+    (27) field_prop -> . DEFAULT EQUALS literal_val SEMICOLON
+    (28) field_prop -> . REQUIRED EQUALS boolean_literal SEMICOLON
+
+    RBRACE          shift and go to state 97
+    LABEL           shift and go to state 99
+    DEFAULT         shift and go to state 100
+    REQUIRED        shift and go to state 101
+
+    field_prop                     shift and go to state 98
+
+state 80
+
+    (25) field_props -> empty .
+
+    RBRACE          reduce using rule 25 (field_props -> empty .)
+    LABEL           reduce using rule 25 (field_props -> empty .)
+    DEFAULT         reduce using rule 25 (field_props -> empty .)
+    REQUIRED        reduce using rule 25 (field_props -> empty .)
+
+
+state 81
+
+    (15) type_reference -> primitive_type LBRACKET RBRACKET .
+
+    LBRACE          reduce using rule 15 (type_reference -> primitive_type LBRACKET RBRACKET .)
+    SEMICOLON       reduce using rule 15 (type_reference -> primitive_type LBRACKET RBRACKET .)
+
+
+state 82
+
+    (30) validation_block -> VALIDATE IDENTIFIER LBRACE validation_rules RBRACE .
+
+    RBRACE          reduce using rule 30 (validation_block -> VALIDATE IDENTIFIER LBRACE validation_rules RBRACE .)
+    IDENTIFIER      reduce using rule 30 (validation_block -> VALIDATE IDENTIFIER LBRACE validation_rules RBRACE .)
+    VALIDATE        reduce using rule 30 (validation_block -> VALIDATE IDENTIFIER LBRACE validation_rules RBRACE .)
+
+
+state 83
+
+    (31) validation_rules -> validation_rules validation_rule .
+
+    RBRACE          reduce using rule 31 (validation_rules -> validation_rules validation_rule .)
+    MIN             reduce using rule 31 (validation_rules -> validation_rules validation_rule .)
+    MAX             reduce using rule 31 (validation_rules -> validation_rules validation_rule .)
+    PATTERN         reduce using rule 31 (validation_rules -> validation_rules validation_rule .)
+    MESSAGE         reduce using rule 31 (validation_rules -> validation_rules validation_rule .)
+
+
+state 84
+
+    (33) validation_rule -> MIN . EQUALS number_lit SEMICOLON
+
+    EQUALS          shift and go to state 102
+
+
+state 85
+
+    (34) validation_rule -> MAX . EQUALS number_lit SEMICOLON
+
+    EQUALS          shift and go to state 103
+
+
+state 86
+
+    (35) validation_rule -> PATTERN . EQUALS STRING_LIT SEMICOLON
+
+    EQUALS          shift and go to state 104
+
+
+state 87
+
+    (36) validation_rule -> MESSAGE . EQUALS STRING_LIT SEMICOLON
+
+    EQUALS          shift and go to state 105
+
+
+state 88
+
+    (40) wizard_element -> STEPS EQUALS LBRACKET step_list RBRACKET . SEMICOLON
+
+    SEMICOLON       shift and go to state 106
+
+
+state 89
+
+    (42) step_list -> step_list COMMA . IDENTIFIER
+
+    IDENTIFIER      shift and go to state 107
+
+
+state 90
+
+    (41) wizard_element -> SUBMIT EQUALS IDENTIFIER DOT http_verb . SEMICOLON
+
+    SEMICOLON       shift and go to state 108
+
+
+state 91
+
+    (47) endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props RBRACE .
+
+    RBRACE          reduce using rule 47 (endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props RBRACE .)
+    HTTP_GET        reduce using rule 47 (endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props RBRACE .)
+    HTTP_POST       reduce using rule 47 (endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props RBRACE .)
+    HTTP_PUT        reduce using rule 47 (endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props RBRACE .)
+    HTTP_DELETE     reduce using rule 47 (endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props RBRACE .)
+    HTTP_PATCH      reduce using rule 47 (endpoint_decl -> http_verb STRING_LIT LBRACE endpoint_props RBRACE .)
+
+
+state 92
+
+    (53) endpoint_props -> endpoint_props endpoint_prop .
+
+    RBRACE          reduce using rule 53 (endpoint_props -> endpoint_props endpoint_prop .)
+    CONSUMES        reduce using rule 53 (endpoint_props -> endpoint_props endpoint_prop .)
+    PRODUCES        reduce using rule 53 (endpoint_props -> endpoint_props endpoint_prop .)
+    HEADERS         reduce using rule 53 (endpoint_props -> endpoint_props endpoint_prop .)
+
+
+state 93
+
+    (55) endpoint_prop -> CONSUMES . EQUALS IDENTIFIER SEMICOLON
+
+    EQUALS          shift and go to state 109
+
+
+state 94
+
+    (56) endpoint_prop -> PRODUCES . EQUALS primitive_type SEMICOLON
+
+    EQUALS          shift and go to state 110
+
+
+state 95
+
+    (57) endpoint_prop -> HEADERS . LBRACE header_list RBRACE SEMICOLON
+
+    LBRACE          shift and go to state 111
+
+
+state 96
+
+    (60) flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON . RBRACE
+
+    RBRACE          shift and go to state 112
+
+
+state 97
+
+    (22) field_props_opt -> LBRACE field_props RBRACE .
+
+    SEMICOLON       reduce using rule 22 (field_props_opt -> LBRACE field_props RBRACE .)
+
+
+state 98
+
+    (24) field_props -> field_props field_prop .
+
+    RBRACE          reduce using rule 24 (field_props -> field_props field_prop .)
+    LABEL           reduce using rule 24 (field_props -> field_props field_prop .)
+    DEFAULT         reduce using rule 24 (field_props -> field_props field_prop .)
+    REQUIRED        reduce using rule 24 (field_props -> field_props field_prop .)
+
+
+state 99
+
+    (26) field_prop -> LABEL . EQUALS STRING_LIT SEMICOLON
+
+    EQUALS          shift and go to state 113
+
+
+state 100
+
+    (27) field_prop -> DEFAULT . EQUALS literal_val SEMICOLON
+
+    EQUALS          shift and go to state 114
+
+
+state 101
+
+    (28) field_prop -> REQUIRED . EQUALS boolean_literal SEMICOLON
+
+    EQUALS          shift and go to state 115
+
+
+state 102
+
+    (33) validation_rule -> MIN EQUALS . number_lit SEMICOLON
+    (61) number_lit -> . INT_LIT
+    (62) number_lit -> . FLOAT_LIT
+
+    INT_LIT         shift and go to state 117
+    FLOAT_LIT       shift and go to state 118
+
+    number_lit                     shift and go to state 116
+
+state 103
+
+    (34) validation_rule -> MAX EQUALS . number_lit SEMICOLON
+    (61) number_lit -> . INT_LIT
+    (62) number_lit -> . FLOAT_LIT
+
+    INT_LIT         shift and go to state 117
+    FLOAT_LIT       shift and go to state 118
+
+    number_lit                     shift and go to state 119
+
+state 104
+
+    (35) validation_rule -> PATTERN EQUALS . STRING_LIT SEMICOLON
+
+    STRING_LIT      shift and go to state 120
+
+
+state 105
+
+    (36) validation_rule -> MESSAGE EQUALS . STRING_LIT SEMICOLON
+
+    STRING_LIT      shift and go to state 121
+
+
+state 106
+
+    (40) wizard_element -> STEPS EQUALS LBRACKET step_list RBRACKET SEMICOLON .
+
+    RBRACE          reduce using rule 40 (wizard_element -> STEPS EQUALS LBRACKET step_list RBRACKET SEMICOLON .)
+    STEPS           reduce using rule 40 (wizard_element -> STEPS EQUALS LBRACKET step_list RBRACKET SEMICOLON .)
+    SUBMIT          reduce using rule 40 (wizard_element -> STEPS EQUALS LBRACKET step_list RBRACKET SEMICOLON .)
+
+
+state 107
+
+    (42) step_list -> step_list COMMA IDENTIFIER .
+
+    RBRACKET        reduce using rule 42 (step_list -> step_list COMMA IDENTIFIER .)
+    COMMA           reduce using rule 42 (step_list -> step_list COMMA IDENTIFIER .)
+
+
+state 108
+
+    (41) wizard_element -> SUBMIT EQUALS IDENTIFIER DOT http_verb SEMICOLON .
+
+    RBRACE          reduce using rule 41 (wizard_element -> SUBMIT EQUALS IDENTIFIER DOT http_verb SEMICOLON .)
+    STEPS           reduce using rule 41 (wizard_element -> SUBMIT EQUALS IDENTIFIER DOT http_verb SEMICOLON .)
+    SUBMIT          reduce using rule 41 (wizard_element -> SUBMIT EQUALS IDENTIFIER DOT http_verb SEMICOLON .)
+
+
+state 109
+
+    (55) endpoint_prop -> CONSUMES EQUALS . IDENTIFIER SEMICOLON
+
+    IDENTIFIER      shift and go to state 122
+
+
+state 110
+
+    (56) endpoint_prop -> PRODUCES EQUALS . primitive_type SEMICOLON
+    (16) primitive_type -> . TYPE_STRING
+    (17) primitive_type -> . TYPE_INT
+    (18) primitive_type -> . TYPE_FLOAT
+    (19) primitive_type -> . TYPE_BOOL
+    (20) primitive_type -> . TYPE_DATE
+    (21) primitive_type -> . TYPE_UUID
+
+    TYPE_STRING     shift and go to state 55
+    TYPE_INT        shift and go to state 56
+    TYPE_FLOAT      shift and go to state 57
+    TYPE_BOOL       shift and go to state 58
+    TYPE_DATE       shift and go to state 59
+    TYPE_UUID       shift and go to state 60
+
+    primitive_type                 shift and go to state 123
+
+state 111
+
+    (57) endpoint_prop -> HEADERS LBRACE . header_list RBRACE SEMICOLON
+    (58) header_list -> . header_list STRING_LIT COLON STRING_LIT SEMICOLON
+    (59) header_list -> . empty
+    (69) empty -> .
+
+    RBRACE          reduce using rule 69 (empty -> .)
+    STRING_LIT      reduce using rule 69 (empty -> .)
+
+    header_list                    shift and go to state 124
+    empty                          shift and go to state 125
+
+state 112
+
+    (60) flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE .
+
+    FORM            reduce using rule 60 (flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE .)
+    WIZARD          reduce using rule 60 (flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE .)
+    API             reduce using rule 60 (flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE .)
+    FLOW            reduce using rule 60 (flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE .)
+    $end            reduce using rule 60 (flow_decl -> FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE .)
+
+
+state 113
+
+    (26) field_prop -> LABEL EQUALS . STRING_LIT SEMICOLON
+
+    STRING_LIT      shift and go to state 126
+
+
+state 114
+
+    (27) field_prop -> DEFAULT EQUALS . literal_val SEMICOLON
+    (65) literal_val -> . STRING_LIT
+    (66) literal_val -> . number_lit
+    (67) literal_val -> . boolean_literal
+    (68) literal_val -> . field_ref
+    (61) number_lit -> . INT_LIT
+    (62) number_lit -> . FLOAT_LIT
+    (63) boolean_literal -> . TRUE
+    (64) boolean_literal -> . FALSE
+    (29) field_ref -> . IDENTIFIER DOT IDENTIFIER
+
+    STRING_LIT      shift and go to state 128
+    INT_LIT         shift and go to state 117
+    FLOAT_LIT       shift and go to state 118
+    TRUE            shift and go to state 132
+    FALSE           shift and go to state 133
+    IDENTIFIER      shift and go to state 134
+
+    literal_val                    shift and go to state 127
+    number_lit                     shift and go to state 129
+    boolean_literal                shift and go to state 130
+    field_ref                      shift and go to state 131
+
+state 115
+
+    (28) field_prop -> REQUIRED EQUALS . boolean_literal SEMICOLON
+    (63) boolean_literal -> . TRUE
+    (64) boolean_literal -> . FALSE
+
+    TRUE            shift and go to state 132
+    FALSE           shift and go to state 133
+
+    boolean_literal                shift and go to state 135
+
+state 116
+
+    (33) validation_rule -> MIN EQUALS number_lit . SEMICOLON
+
+    SEMICOLON       shift and go to state 136
+
+
+state 117
+
+    (61) number_lit -> INT_LIT .
+
+    SEMICOLON       reduce using rule 61 (number_lit -> INT_LIT .)
+
+
+state 118
+
+    (62) number_lit -> FLOAT_LIT .
+
+    SEMICOLON       reduce using rule 62 (number_lit -> FLOAT_LIT .)
+
+
+state 119
+
+    (34) validation_rule -> MAX EQUALS number_lit . SEMICOLON
+
+    SEMICOLON       shift and go to state 137
+
+
+state 120
+
+    (35) validation_rule -> PATTERN EQUALS STRING_LIT . SEMICOLON
+
+    SEMICOLON       shift and go to state 138
+
+
+state 121
+
+    (36) validation_rule -> MESSAGE EQUALS STRING_LIT . SEMICOLON
+
+    SEMICOLON       shift and go to state 139
+
+
+state 122
+
+    (55) endpoint_prop -> CONSUMES EQUALS IDENTIFIER . SEMICOLON
+
+    SEMICOLON       shift and go to state 140
+
+
+state 123
+
+    (56) endpoint_prop -> PRODUCES EQUALS primitive_type . SEMICOLON
+
+    SEMICOLON       shift and go to state 141
+
+
+state 124
+
+    (57) endpoint_prop -> HEADERS LBRACE header_list . RBRACE SEMICOLON
+    (58) header_list -> header_list . STRING_LIT COLON STRING_LIT SEMICOLON
+
+    RBRACE          shift and go to state 142
+    STRING_LIT      shift and go to state 143
+
+
+state 125
+
+    (59) header_list -> empty .
+
+    RBRACE          reduce using rule 59 (header_list -> empty .)
+    STRING_LIT      reduce using rule 59 (header_list -> empty .)
+
+
+state 126
+
+    (26) field_prop -> LABEL EQUALS STRING_LIT . SEMICOLON
+
+    SEMICOLON       shift and go to state 144
+
+
+state 127
+
+    (27) field_prop -> DEFAULT EQUALS literal_val . SEMICOLON
+
+    SEMICOLON       shift and go to state 145
+
+
+state 128
+
+    (65) literal_val -> STRING_LIT .
+
+    SEMICOLON       reduce using rule 65 (literal_val -> STRING_LIT .)
+
+
+state 129
+
+    (66) literal_val -> number_lit .
+
+    SEMICOLON       reduce using rule 66 (literal_val -> number_lit .)
+
+
+state 130
+
+    (67) literal_val -> boolean_literal .
+
+    SEMICOLON       reduce using rule 67 (literal_val -> boolean_literal .)
+
+
+state 131
+
+    (68) literal_val -> field_ref .
+
+    SEMICOLON       reduce using rule 68 (literal_val -> field_ref .)
+
+
+state 132
+
+    (63) boolean_literal -> TRUE .
+
+    SEMICOLON       reduce using rule 63 (boolean_literal -> TRUE .)
+
+
+state 133
+
+    (64) boolean_literal -> FALSE .
+
+    SEMICOLON       reduce using rule 64 (boolean_literal -> FALSE .)
+
+
+state 134
+
+    (29) field_ref -> IDENTIFIER . DOT IDENTIFIER
+
+    DOT             shift and go to state 146
+
+
+state 135
+
+    (28) field_prop -> REQUIRED EQUALS boolean_literal . SEMICOLON
+
+    SEMICOLON       shift and go to state 147
+
+
+state 136
+
+    (33) validation_rule -> MIN EQUALS number_lit SEMICOLON .
+
+    RBRACE          reduce using rule 33 (validation_rule -> MIN EQUALS number_lit SEMICOLON .)
+    MIN             reduce using rule 33 (validation_rule -> MIN EQUALS number_lit SEMICOLON .)
+    MAX             reduce using rule 33 (validation_rule -> MIN EQUALS number_lit SEMICOLON .)
+    PATTERN         reduce using rule 33 (validation_rule -> MIN EQUALS number_lit SEMICOLON .)
+    MESSAGE         reduce using rule 33 (validation_rule -> MIN EQUALS number_lit SEMICOLON .)
+
+
+state 137
+
+    (34) validation_rule -> MAX EQUALS number_lit SEMICOLON .
+
+    RBRACE          reduce using rule 34 (validation_rule -> MAX EQUALS number_lit SEMICOLON .)
+    MIN             reduce using rule 34 (validation_rule -> MAX EQUALS number_lit SEMICOLON .)
+    MAX             reduce using rule 34 (validation_rule -> MAX EQUALS number_lit SEMICOLON .)
+    PATTERN         reduce using rule 34 (validation_rule -> MAX EQUALS number_lit SEMICOLON .)
+    MESSAGE         reduce using rule 34 (validation_rule -> MAX EQUALS number_lit SEMICOLON .)
+
+
+state 138
+
+    (35) validation_rule -> PATTERN EQUALS STRING_LIT SEMICOLON .
+
+    RBRACE          reduce using rule 35 (validation_rule -> PATTERN EQUALS STRING_LIT SEMICOLON .)
+    MIN             reduce using rule 35 (validation_rule -> PATTERN EQUALS STRING_LIT SEMICOLON .)
+    MAX             reduce using rule 35 (validation_rule -> PATTERN EQUALS STRING_LIT SEMICOLON .)
+    PATTERN         reduce using rule 35 (validation_rule -> PATTERN EQUALS STRING_LIT SEMICOLON .)
+    MESSAGE         reduce using rule 35 (validation_rule -> PATTERN EQUALS STRING_LIT SEMICOLON .)
+
+
+state 139
+
+    (36) validation_rule -> MESSAGE EQUALS STRING_LIT SEMICOLON .
+
+    RBRACE          reduce using rule 36 (validation_rule -> MESSAGE EQUALS STRING_LIT SEMICOLON .)
+    MIN             reduce using rule 36 (validation_rule -> MESSAGE EQUALS STRING_LIT SEMICOLON .)
+    MAX             reduce using rule 36 (validation_rule -> MESSAGE EQUALS STRING_LIT SEMICOLON .)
+    PATTERN         reduce using rule 36 (validation_rule -> MESSAGE EQUALS STRING_LIT SEMICOLON .)
+    MESSAGE         reduce using rule 36 (validation_rule -> MESSAGE EQUALS STRING_LIT SEMICOLON .)
+
+
+state 140
+
+    (55) endpoint_prop -> CONSUMES EQUALS IDENTIFIER SEMICOLON .
+
+    RBRACE          reduce using rule 55 (endpoint_prop -> CONSUMES EQUALS IDENTIFIER SEMICOLON .)
+    CONSUMES        reduce using rule 55 (endpoint_prop -> CONSUMES EQUALS IDENTIFIER SEMICOLON .)
+    PRODUCES        reduce using rule 55 (endpoint_prop -> CONSUMES EQUALS IDENTIFIER SEMICOLON .)
+    HEADERS         reduce using rule 55 (endpoint_prop -> CONSUMES EQUALS IDENTIFIER SEMICOLON .)
+
+
+state 141
+
+    (56) endpoint_prop -> PRODUCES EQUALS primitive_type SEMICOLON .
+
+    RBRACE          reduce using rule 56 (endpoint_prop -> PRODUCES EQUALS primitive_type SEMICOLON .)
+    CONSUMES        reduce using rule 56 (endpoint_prop -> PRODUCES EQUALS primitive_type SEMICOLON .)
+    PRODUCES        reduce using rule 56 (endpoint_prop -> PRODUCES EQUALS primitive_type SEMICOLON .)
+    HEADERS         reduce using rule 56 (endpoint_prop -> PRODUCES EQUALS primitive_type SEMICOLON .)
+
+
+state 142
+
+    (57) endpoint_prop -> HEADERS LBRACE header_list RBRACE . SEMICOLON
+
+    SEMICOLON       shift and go to state 148
+
+
+state 143
+
+    (58) header_list -> header_list STRING_LIT . COLON STRING_LIT SEMICOLON
+
+    COLON           shift and go to state 149
+
+
+state 144
+
+    (26) field_prop -> LABEL EQUALS STRING_LIT SEMICOLON .
+
+    RBRACE          reduce using rule 26 (field_prop -> LABEL EQUALS STRING_LIT SEMICOLON .)
+    LABEL           reduce using rule 26 (field_prop -> LABEL EQUALS STRING_LIT SEMICOLON .)
+    DEFAULT         reduce using rule 26 (field_prop -> LABEL EQUALS STRING_LIT SEMICOLON .)
+    REQUIRED        reduce using rule 26 (field_prop -> LABEL EQUALS STRING_LIT SEMICOLON .)
+
+
+state 145
+
+    (27) field_prop -> DEFAULT EQUALS literal_val SEMICOLON .
+
+    RBRACE          reduce using rule 27 (field_prop -> DEFAULT EQUALS literal_val SEMICOLON .)
+    LABEL           reduce using rule 27 (field_prop -> DEFAULT EQUALS literal_val SEMICOLON .)
+    DEFAULT         reduce using rule 27 (field_prop -> DEFAULT EQUALS literal_val SEMICOLON .)
+    REQUIRED        reduce using rule 27 (field_prop -> DEFAULT EQUALS literal_val SEMICOLON .)
+
+
+state 146
+
+    (29) field_ref -> IDENTIFIER DOT . IDENTIFIER
+
+    IDENTIFIER      shift and go to state 150
+
+
+state 147
+
+    (28) field_prop -> REQUIRED EQUALS boolean_literal SEMICOLON .
+
+    RBRACE          reduce using rule 28 (field_prop -> REQUIRED EQUALS boolean_literal SEMICOLON .)
+    LABEL           reduce using rule 28 (field_prop -> REQUIRED EQUALS boolean_literal SEMICOLON .)
+    DEFAULT         reduce using rule 28 (field_prop -> REQUIRED EQUALS boolean_literal SEMICOLON .)
+    REQUIRED        reduce using rule 28 (field_prop -> REQUIRED EQUALS boolean_literal SEMICOLON .)
+
+
+state 148
+
+    (57) endpoint_prop -> HEADERS LBRACE header_list RBRACE SEMICOLON .
+
+    RBRACE          reduce using rule 57 (endpoint_prop -> HEADERS LBRACE header_list RBRACE SEMICOLON .)
+    CONSUMES        reduce using rule 57 (endpoint_prop -> HEADERS LBRACE header_list RBRACE SEMICOLON .)
+    PRODUCES        reduce using rule 57 (endpoint_prop -> HEADERS LBRACE header_list RBRACE SEMICOLON .)
+    HEADERS         reduce using rule 57 (endpoint_prop -> HEADERS LBRACE header_list RBRACE SEMICOLON .)
+
+
+state 149
+
+    (58) header_list -> header_list STRING_LIT COLON . STRING_LIT SEMICOLON
+
+    STRING_LIT      shift and go to state 151
+
+
+state 150
+
+    (29) field_ref -> IDENTIFIER DOT IDENTIFIER .
+
+    SEMICOLON       reduce using rule 29 (field_ref -> IDENTIFIER DOT IDENTIFIER .)
+
+
+state 151
+
+    (58) header_list -> header_list STRING_LIT COLON STRING_LIT . SEMICOLON
+
+    SEMICOLON       shift and go to state 152
+
+
+state 152
+
+    (58) header_list -> header_list STRING_LIT COLON STRING_LIT SEMICOLON .
+
+    RBRACE          reduce using rule 58 (header_list -> header_list STRING_LIT COLON STRING_LIT SEMICOLON .)
+    STRING_LIT      reduce using rule 58 (header_list -> header_list STRING_LIT COLON STRING_LIT SEMICOLON .)
+
