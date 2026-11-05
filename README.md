@@ -1,89 +1,233 @@
+# 🛠️ Askform DSL
 
+O **Askform** é uma linguagem de domínio específico (DSL) e compilador construído em Python (utilizando a biblioteca `PLY` — *Python Lex-Yacc*). O objetivo do Askform é permitir a especificação declarativa de formulários web, validações de campos, abstração de temas visuais e mapeamento de endpoints REST de forma rápida e segura.
 
+O compilador lê arquivos de especificação (`.fad` / `.askform`), realiza análise léxica, sintática e semântica estrita, e gera automaticamente como artefatos finalizados:
+1. **Página HTML5 responsiva** (`dist/<form_name>.html`) com suporte nativo a `FormData`, validações no lado do cliente, suporte a envio de arquivos e fallback automático de comunicação via `fetch` HTTP.
+2. **Servidor backend em Flask** (`dist/app.py`) dinâmico com persistência automática em banco de dados SQLite (`database.db`), middleware com suporte total a CORS, sanitização de identificadores SQL e tratamento de uploads de arquivos.
 
-# Forms and APIs DSL Compiler (FAD-Compiler)
-
-A robust domain-specific language (DSL) compiler and code generation engine designed to unify declarative user interface schemas, multi-step wizards, and REST API ingestion contracts. 
-
-FAD-Compiler translates high-level domain definitions into production-ready artifacts, including interactive HTML5 multi-step wizard applications with client-side state propagation and type-safe Python/Flask backend routers.
-
----
-
-## Architecture & Compilation Pipeline
-
-The compilation workflow consists of three primary phases managed by the compiler driver (`main.py`):
-
-1. **Syntactic Analysis (Lexer & Parser):** Employs PLY (Python Lex-Yacc) to tokenize source files (`.fad`), construct an Abstract Syntax Tree (AST), and enforce strict grammar rules.
-2. **Semantic Analysis:** Validates scope uniqueness, type consistency, cross-reference integrity (such as inter-step field binding), and route parameter mappings.
-3. **Code Generation:** Emits target code artifacts into the `dist/` directory:
-   - Interactive, multi-step HTML5 form wizards with client-side state preservation and validation.
-   - A fully typed Flask backend application (`app.py`) to handle payload ingestion.
+📖 **[Acesse a Documentação Completa no Google Drive](https://docs.google.com/document/d/1LmWLQvcHF1gwP22vvsaTMDQxMBQqgxs6z66bm8NaOCc/edit?usp=sharing)**
 
 ---
 
-## Project Structure
+## 📐 Estrutura da Linguagem (Comandos e Blocos da DSL)
 
+A DSL é composta por 5 blocos estruturais de declaração: `theme`, `form`, `api`, `wizard` e `flow`.
+
+### 1. Bloco `theme` (Estilização da Interface)
+Define as variáveis visuais para renderização do CSS do formulário HTML gerado.
+
+```dsl
+theme NomeDoTema {
+  background = "#0f172a";
+  card_background = "#1e293b";
+  text_color = "#f8fafc";
+  accent_color = "#38bdf8";
+  font_family = "Courier New, monospace";
+  border_radius = "12px";
+}
+```
+
+* **Propriedades suportadas:** `background`, `card_background`, `text_color`, `accent_color`, `font_family`, `border_radius`.
+
+---
+
+### 2. Bloco `form` (Estruturação de Dados e Validações)
+Define os campos do formulário, tipos de dados, regras obrigatórias e restrições de validação.
+
+```dsl
+form ProfileForm {
+  userId: integer {
+    label = "Código do Usuário";
+    required = true;
+  };
+  displayName: string {
+    label = "Nome de Exibição";
+    default = "Desenvolvedor";
+  };
+  avatar: file {
+    label = "Foto de Perfil";
+    required = false;
+  };
+
+  validate displayName {
+    min = 3;
+    max = 20;
+    pattern = "^[a-zA-Z0-9_]+$";
+    message = "O nome deve conter entre 3 e 20 caracteres alfanuméricos.";
+  }
+}
+```
+
+#### Tipos Primitivos de Campos (`field_type`)
+* `string`: Texto simples.
+* `integer`: Números inteiros.
+* `float`: Números decimais.
+* `boolean`: Campo lógico (renderizado como checkbox no HTML).
+* `date`: Data (formato ISO `YYYY-MM-DD`).
+* `uuid`: Identificador único no padrão UUID v4.
+* `file`: Upload de arquivos (armazenado de forma segura no backend em `uploads/`).
+
+#### Propriedades de Campo
+* `label = "Texto"`: Rótulo exibido na interface gráfica.
+* `required = true/false`: Define se o preenchimento é obrigatório.
+* `default = valor`: Define o valor padrão inicial do campo.
+
+#### Bloco de Validação (`validate <nome_do_campo>`)
+* `min = <número>`: Tamanho mínimo para `string` ou valor mínimo para `integer`/`float`.
+* `max = <número>`: Tamanho máximo para `string` ou valor máximo para `integer`/`float`.
+* `pattern = "expressão_regular"`: Expressão regular (Regex) para validação contextual de strings.
+* `message = "Mensagem de erro"`: Mensagem customizada a ser exibida em caso de violação da regra.
+
+---
+
+### 3. Bloco `api` (Endpoints REST)
+Declara os serviços web e mapeia a rota HTTP associada ao formulário. Suporta todos os verbos REST (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`).
+
+```dsl
+api UserApi {
+  POST "/api/v1/user/{userId}" {
+    consumes = ProfileForm;
+    produces = uuid;
+  }
+  GET "/api/v1/user/{userId}" {
+    consumes = ProfileForm;
+    produces = string;
+  }
+  PUT "/api/v1/user/{userId}" {
+    consumes = ProfileForm;
+    produces = boolean;
+  }
+  PATCH "/api/v1/user/{userId}" {
+    consumes = ProfileForm;
+    produces = string;
+  }
+  DELETE "/api/v1/user/{userId}" {
+    consumes = ProfileForm;
+    produces = boolean;
+  }
+}
+```
+
+* **Verbos HTTP suportados:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`.
+* **Parâmetros de Rota:** Declarações entre chaves (ex: `{userId}`) capturam parâmetros dinâmicos vinculados aos campos do formulário.
+
+---
+
+### 4. Bloco `wizard` (Formulários em Múltiplas Etapas)
+Permite encadear múltiplos formulários em etapas sequenciais com herança inter-etapas.
+
+```dsl
+wizard RegistrationWizard {
+  steps = [StepOneForm, StepTwoForm];
+  submit = UserApi.POST;
+}
+```
+
+---
+
+### 5. Bloco `flow` (Vínculo da Aplicação)
+Realiza a ligação direta entre a interface de origem (`form`) e o verbo da API (`api`).
+
+```dsl
+flow UserRegistrationFlow {
+  ProfileForm -> UserApi.POST;
+}
+```
+
+---
+
+## 🚀 Guia de Uso e Execução
+
+### Pré-requisitos
+* Python 3.9 ou superior instalado.
+* Bibliotecas `PLY` (Python Lex-Yacc) e `Flask`:
+
+```bash
+pip install ply flask werkzeug
+```
+
+---
+
+### 1. Compilando o arquivo DSL
+
+Para compilar seu arquivo de especificação Askform (ex: `exemplo.fad`):
+
+```bash
+python main.py exemplo.fad
+```
+
+#### Saída esperada no terminal:
 ```text
-├── lexer.py             # Lexical analyzer and token definitions
-├── parser.py            # LALR(1) syntactic parser and AST builder
-├── symbol_table.py      # Scope management, types, and AST node definitions
-├── semantic.py          # Static semantic checker and cross-reference validator
-├── generator_html.py    # Multi-step wizard UI generator
-├── generator_flask.py   # REST API backend router generator
-├── main.py              # CLI compiler driver and orchestrator
-└── dist/                # Output directory for generated code artifacts
+Phase 1: Syntactic Parse (Building AST)...
+Phase 2: Semantic Analysis...
+Compilation Successful! Emitting Artifact Summary...
+{
+  "forms_compiled": [
+    "FeedbackForm"
+  ],
+  "apis_compiled": [
+    "FeedbackApi"
+  ],
+  "flows_linked": [
+    "FeedbackFlow"
+  ]
+}
+Phase 3: Code Generation...
+[SUCESSO] Formulário HTML gerado: dist\feedbackform.html
+[SUCESSO] Aplicação Flask dinâmica gerada em: dist\app.py
+Artifacts generated successfully.
 ```
+
+Os arquivos gerados são salvos automaticamente no diretório `dist/`.
 
 ---
 
-## Prerequisites & Dependencies
+### 2. Iniciando o Servidor Backend
 
-The project relies strictly on **Python 3** and **PLY (Python Lex-Yacc)** for lexical and syntactic analysis. No additional external frameworks are required to run the compiler core.
-
-To install the required parser generator dependency:
-
-```bash
-pip install ply==3.11
-```
-
----
-
-## Getting Started & Execution
-
-Compile and run a sample DSL definition file using the compiler driver:
-
-```bash
-python main.py seu_programa.fad
-```
-
-This will output the compiled artifacts into the `dist/` folder. To spin up the generated backend server:
+Execute o servidor Flask gerado para habilitar os endpoints e o banco de dados SQLite:
 
 ```bash
 python dist/app.py
 ```
 
+O servidor será iniciado por padrão em `http://127.0.0.1:5000`. O banco de dados SQLite `database.db` e o repositório de uploads `uploads/` serão criados na mesma pasta automaticamente.
+
 ---
 
-## Configuring Data Persistence Targets
+### 3. Executando a Interface Web (HTML)
 
-By default, the generated backend router (`dist/app.py`) accepts and validates incoming payloads from wizards or API endpoints, returning a success response with the structured JSON data. 
+Abra o arquivo HTML gerado (ex: `dist/feedbackform.html`) diretamente no seu navegador de preferência.
 
-To connect the generated API endpoints to your preferred persistence layer (such as PostgreSQL, MongoDB, SQLAlchemy, or an external microservice):
+Ao preencher os campos e clicar em **Enviar dados**:
+1. As validações nativas e os tipos de dados serão checados no lado do cliente.
+2. O script disparará uma requisição `fetch` via HTTP enviando os dados em formato `FormData` para o backend Flask em `http://127.0.0.1:5000`.
+3. O Flask responderá com os dados inseridos e a confirmação em JSON:
 
-1. **Locate the generated route handler** inside `generator_flask.py` (or directly modify the generated `dist/app.py` file if you prefer manual wiring).
-2. Find the submission route block corresponding to your wizard or API endpoint:
-   ```python
-   @app.route('/api/seudominio/submit', methods=['POST'])
-   def submit_wizard_seudominio():
-       payload = request.get_json(silent=True) or {}
-       # ... validation logic ...
-   ```
-3. **Inject your persistence logic** right before the return statement:
-   ```python
-   # Exemplo com SQLAlchemy / Banco de Dados Relacional
-   # novo_registro = MeuModeloTabela(dados=payload)
-   # db.session.add(novo_registro)
-   # db.session.commit()
-   ```
+```json
+{
+  "status": "success",
+  "message": "Registro criado com sucesso",
+  "record_id": 1,
+  "data": {
+    "userId": 1,
+    "comments": "Excelente compilador!",
+    "attachment": "uploads/a1b2c3d4e5f6.jpg"
+  }
+}
+```
 
-By centralizing schema definitions in your `.fad` source files, any updates to field types or validation constraints propagate consistently across both the frontend forms and the backend ingestion contracts.
+---
+
+## 🔒 Segurança e Robustez Integradas
+
+* **Prevenção de SQL Injection:** Todas as operações no banco SQLite utilizam consultas parametrizadas com placeholders (`?`) e identificadores sanitizados.
+* **Tratamento de Uploads de Arquivos:** Nomes de arquivos são limpos via `secure_filename()` e renomeados com hashes UUID v4 para evitar sobreposição ou ataques de *Path Traversal*.
+* **Suporte a CORS:** O backend possui tratamento de preflight `OPTIONS` e cabeçalhos de *Cross-Origin Resource Sharing* liberados para chamadas locais.
+* **Validação em Camadas Duplas:** Regras de tamanho, limites de números e padrões Regex são validados obrigatoriamente tanto no cliente (HTML5) quanto no servidor (Python/Flask).
+
+---
+
+## 📄 License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
