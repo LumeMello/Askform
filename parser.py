@@ -1,11 +1,11 @@
 """
-Syntactic Parser module for Forms and APIs DSL using PLY.
-Constructs typed AST nodes from token streams.
+Syntactic Parser module for Askform DSL using PLY.
+Supports Theme declarations, File types, Forms, Wizards, and APIs.
 """
 import ply.yacc as yacc
 from lexer import tokens
 from symbol_table import (
-    ProgramNode, FormNode, FormFieldNode, ValidationBlockNode,
+    ProgramNode, ThemeNode, FormNode, FormFieldNode, ValidationBlockNode,
     WizardNode, FieldRefNode, ApiNode, EndpointNode, FlowNode
 )
 
@@ -13,7 +13,9 @@ def p_program(p):
     '''program : declarations'''
     program_node = ProgramNode()
     for decl in p[1]:
-        if isinstance(decl, FormNode):
+        if isinstance(decl, ThemeNode):
+            program_node.themes[decl.name] = decl
+        elif isinstance(decl, FormNode):
             program_node.forms[decl.name] = decl
         elif isinstance(decl, WizardNode):
             program_node.wizards[decl.name] = decl
@@ -32,11 +34,30 @@ def p_declarations(p):
         p[0] = [p[1]]
 
 def p_declaration(p):
-    '''declaration : form_decl
+    '''declaration : theme_decl
+                   | form_decl
                    | wizard_decl
                    | api_decl
                    | flow_decl'''
     p[0] = p[1]
+
+# Theme Rules
+def p_theme_decl(p):
+    '''theme_decl : THEME IDENTIFIER LBRACE theme_props RBRACE'''
+    p[0] = ThemeNode(lineno=p.lineno(1), name=p[2], properties=p[4])
+
+def p_theme_props(p):
+    '''theme_props : theme_props theme_prop
+                   | empty'''
+    if len(p) == 3:
+        p[1].update(p[2])
+        p[0] = p[1]
+    else:
+        p[0] = {}
+
+def p_theme_prop(p):
+    '''theme_prop : IDENTIFIER EQUALS literal_val SEMICOLON'''
+    p[0] = {p[1]: p[3]}
 
 # Form Rules
 def p_form_decl(p):
@@ -87,7 +108,8 @@ def p_primitive_type(p):
                       | TYPE_FLOAT
                       | TYPE_BOOL
                       | TYPE_DATE
-                      | TYPE_UUID'''
+                      | TYPE_UUID
+                      | FILE'''
     p[0] = p[1]
 
 def p_field_props_opt(p):

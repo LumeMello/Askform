@@ -1,0 +1,35 @@
+theme CyberQueryTheme {
+  background = "#0f172a";
+  card_background = "#1e293b";
+  text_color = "#f8fafc";
+  accent_color = "#38bdf8";
+  font_family = "Courier New, monospace";
+  border_radius = "12px";
+}
+
+form FeedbackForm {
+  userId: integer {
+    label = "ID do Utilizador";
+    required = true;
+  };
+  comments: string {
+    label = "Comentário ou Feedback";
+    default = "Excelente compilador!";
+    required = true;
+  };
+  attachment: file {
+    label = "Anexo / Imagem";
+    required = true;
+  };
+}
+
+api FeedbackApi {
+  POST "/api/v1/feedback/{userId}" {
+    consumes = FeedbackForm;
+    produces = uuid;
+  }
+}
+
+flow FeedbackFlow {
+  FeedbackForm -> FeedbackApi.POST;
+}

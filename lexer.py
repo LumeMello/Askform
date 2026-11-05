@@ -1,6 +1,8 @@
 """
-Lexer module for Forms and APIs DSL (ASCII Only / No Accents).
+Lexer module for Askform DSL.
+Defines terminal tokens, reserved words, and regular expression matchers.
 """
+import codecs
 import sys
 import ply.lex as lex
 
@@ -12,12 +14,14 @@ reserved = {
     'api': 'API',
     'flow': 'FLOW',
     'validate': 'VALIDATE',
+    'theme': 'THEME',
     'string': 'TYPE_STRING',
     'integer': 'TYPE_INT',
     'float': 'TYPE_FLOAT',
     'boolean': 'TYPE_BOOL',
     'date': 'TYPE_DATE',
     'uuid': 'TYPE_UUID',
+    'file': 'FILE',
     'label': 'LABEL',
     'default': 'DEFAULT',
     'required': 'REQUIRED',
@@ -78,13 +82,11 @@ def t_INT_LIT(t):
     return t
 
 def t_STRING_LIT(t):
-    # Aceita apenas caracteres ASCII dentro da string (barra acentos e caracteres UTF-8 estendidos)
-    r'\"([^\\\"\n]|[^\x00-\x7F])*?\"'
-    t.value = t.value[1:-1]
+    r'\"([^\\\n]|(\\.))*?\"'
+    t.value = codecs.decode(t.value[1:-1], 'unicode_escape')
     return t
 
 def t_IDENTIFIER(t):
-    # Restringe estritamente a identificadores ASCII sem acentos (a-z, A-Z, 0-9, _)
     r'[a-zA-Z_][a-zA-Z0-9_]*'
     t.type = reserved.get(t.value, 'IDENTIFIER')
     return t
@@ -98,7 +100,7 @@ def t_newline(t):
     t.lexer.lineno += len(t.value)
 
 def t_error(t):
-    sys.stderr.write(f"Lexical error at line {t.lexer.lineno}: Illegal character or accent '{t.value[0]}'\n")
+    sys.stderr.write(f"Lexical error at line {t.lexer.lineno}: Illegal character '{t.value[0]}'\n")
     t.lexer.skip(1)
 
 def build_lexer():

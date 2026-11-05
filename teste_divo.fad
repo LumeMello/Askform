@@ -1,0 +1,41 @@
+theme CyberNeoNoir {
+  background = "#0f172a";
+  card_background = "#1e293b";
+  text_color = "#f8fafc";
+  accent_color = "#38bdf8";
+  font_family = "Courier New, monospace";
+  border_radius = "12px";
+}
+
+form UserProfileForm {
+  userId: integer {
+    required = true;
+  };
+  fullName: string {
+    label = "Nome Completo";
+    default = "Nome";
+    required = true;
+  };
+  avatar: file {
+    label = "Foto de Perfil (Imagem)";
+    required = true;
+  };
+
+  validate fullName {
+    min = 3;
+    max = 50;
+    pattern = "^[a-zA-ZÀ-ÿ ]+$";
+    message = "Apenas letras e espaços permitidos";
+  }
+}
+
+api UserApi {
+  POST "/api/v1/profile" {
+    consumes = UserProfileForm;
+    produces = uuid;
+  }
+}
+
+flow ProfileFlow {
+  UserProfileForm -> UserApi.POST;
+}
