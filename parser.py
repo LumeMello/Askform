@@ -51,37 +51,45 @@ def _merge_unique(target, incoming, description, lineno=None):
 
 
 def p_program(p):
-    "program : declarations"
-    program_node = ProgramNode()
-    for decl in p[1]:
-        if isinstance(decl, ThemeNode):
-            _insert_unique(program_node.themes, decl.name, decl, "Tema", decl.lineno)
-        elif isinstance(decl, FormNode):
+    "program : theme_opt body_declarations flow_opt"
+    program_node = ProgramNode(theme=p[1], flow=p[3])
+
+    for decl in p[2]:
+        if isinstance(decl, FormNode):
             _insert_unique(program_node.forms, decl.name, decl, "Formulário", decl.lineno)
         elif isinstance(decl, WizardNode):
             _insert_unique(program_node.wizards, decl.name, decl, "Wizard", decl.lineno)
         elif isinstance(decl, ApiNode):
             _insert_unique(program_node.apis, decl.name, decl, "API", decl.lineno)
-        elif isinstance(decl, FlowNode):
-            _insert_unique(program_node.flows, decl.name, decl, "Flow", decl.lineno)
+
     p[0] = program_node
 
 
-def p_declarations(p):
-    """declarations : declarations declaration
-                    | declaration"""
+def p_theme_opt(p):
+    """theme_opt : theme_decl
+                 | empty"""
+    p[0] = p[1]
+
+
+def p_body_declarations(p):
+    """body_declarations : body_declarations body_declaration
+                         | body_declaration"""
     if len(p) == 3:
         p[0] = p[1] + [p[2]]
     else:
         p[0] = [p[1]]
 
 
-def p_declaration(p):
-    """declaration : theme_decl
-                   | form_decl
-                   | wizard_decl
-                   | api_decl
-                   | flow_decl"""
+def p_body_declaration(p):
+    """body_declaration : form_decl
+                        | wizard_decl
+                        | api_decl"""
+    p[0] = p[1]
+
+
+def p_flow_opt(p):
+    """flow_opt : flow_decl
+                 | empty"""
     p[0] = p[1]
 
 

@@ -80,11 +80,11 @@ class FlowNode(ASTNode):
 
 @dataclass
 class ProgramNode(ASTNode):
-    themes: Dict[str, ThemeNode] = field(default_factory=dict)
+    theme: Optional[ThemeNode] = None
     forms: Dict[str, FormNode] = field(default_factory=dict)
     wizards: Dict[str, WizardNode] = field(default_factory=dict)
     apis: Dict[str, ApiNode] = field(default_factory=dict)
-    flows: Dict[str, FlowNode] = field(default_factory=dict)
+    flow: Optional[FlowNode] = None
 
 class SymbolTable:
     def __init__(self):

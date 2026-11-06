@@ -97,9 +97,12 @@ def _safe_css_value(value: Any, kind: str, default: str) -> str:
 
 def _resolve_form_endpoint(form_name: str, ast: ProgramNode) -> Tuple[str, str]:
     """Resolve rota e verbo do endpoint que efetivamente consome o formulário."""
-    for flow in ast.flows.values():
-        if flow.source_form != form_name or flow.target_api not in ast.apis:
-            continue
+    flow = ast.flow
+    if (
+        flow is not None
+        and flow.source_form == form_name
+        and flow.target_api in ast.apis
+    ):
         api = ast.apis[flow.target_api]
         desired_method = str(flow.target_verb).upper()
         for endpoint in api.endpoints:
@@ -159,10 +162,7 @@ def _render_form_html(form: FormNode, ast: ProgramNode) -> str:
 
     route_template, route_params = _validate_route(route_template, http_method, field_names)
 
-    theme_props: Dict[str, Any] = {}
-    if getattr(ast, "themes", None):
-        first_theme = next(iter(ast.themes.values()))
-        theme_props = getattr(first_theme, "properties", {}) or {}
+    theme_props: Dict[str, Any] = ast.theme.properties if ast.theme else {}
 
     bg_color = _safe_css_value(theme_props.get("background", "#f8fafc"), "color", "#f8fafc")
     card_bg = _safe_css_value(theme_props.get("card_background", "#ffffff"), "color", "#ffffff")

@@ -33,7 +33,7 @@ class SemanticAnalyzer:
         self.check_forms()
         self.check_wizards()
         self.check_apis()
-        self.check_flows()
+        self.check_flows(ast.flow)
         return len(self.errors) == 0
 
     def build_symbols(self, ast: ProgramNode):
@@ -52,11 +52,17 @@ class SemanticAnalyzer:
                 self.symbol_table.insert_api(api)
             except KeyError as ex:
                 self.log_error(str(ex), api.lineno)
-        for flow in ast.flows.values():
+        if ast.theme is not None:
             try:
-                self.symbol_table.insert_flow(flow)
+                self.symbol_table.insert_theme(ast.theme)
             except KeyError as ex:
-                self.log_error(str(ex), flow.lineno)
+                self.log_error(str(ex), ast.theme.lineno)
+
+        if ast.flow is not None:
+            try:
+                self.symbol_table.insert_flow(ast.flow)
+            except KeyError as ex:
+                self.log_error(str(ex), ast.flow.lineno)
 
     def check_forms(self):
         for form in self.symbol_table.forms.values():
@@ -142,17 +148,31 @@ class SemanticAnalyzer:
                             if p not in form.fields:
                                 self.log_error(f"Parâmetro de rota '{{{p}}}' não declarado no formulário '{form.name}'.", ep.lineno)
 
-    def check_flows(self):
-        for flow in self.symbol_table.flows.values():
-            valid_source = (flow.source_form in self.symbol_table.forms or flow.source_form in self.symbol_table.wizards)
-            if not valid_source:
-                self.log_error(f"Flow '{flow.name}' referencia origem inexistente '{flow.source_form}'.", flow.lineno)
-            if flow.target_api not in self.symbol_table.apis:
-                self.log_error(f"Flow '{flow.name}' referencia API inexistente '{flow.target_api}'.", flow.lineno)
-            else:
-                target = self.symbol_table.apis[flow.target_api]
-                if not any(ep.method == flow.target_verb for ep in target.endpoints):
-                    self.log_error(f"API destino '{flow.target_api}' não suporta o verbo '{flow.target_verb}' no flow.", flow.lineno)
+    def check_flows(self, flow):
+        if flow is None:
+            return
+
+        valid_source = (
+            flow.source_form in self.symbol_table.forms
+            or flow.source_form in self.symbol_table.wizards
+        )
+        if not valid_source:
+            self.log_error(
+                f"Flow '{flow.name}' referencia origem inexistente '{flow.source_form}'.",
+                flow.lineno,
+            )
+        if flow.target_api not in self.symbol_table.apis:
+            self.log_error(
+                f"Flow '{flow.name}' referencia API inexistente '{flow.target_api}'.",
+                flow.lineno,
+            )
+        else:
+            target = self.symbol_table.apis[flow.target_api]
+            if not any(ep.method == flow.target_verb for ep in target.endpoints):
+                self.log_error(
+                    f"API destino '{flow.target_api}' não suporta o verbo '{flow.target_verb}' no flow.",
+                    flow.lineno,
+                )
 
     def _is_type_compatible(self, declared_type: str, val: Any) -> bool:
         if declared_type == 'string' and isinstance(val, str):
