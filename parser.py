@@ -34,6 +34,17 @@ from symbol_table import (
     EndpointNode,
     FlowNode,
 )
+# MODIFICADO (SDD): as regras semânticas (R1..R7) ficam em semantic.py e são
+# chamadas pelas ações das produções abaixo; ver tabela.md.
+from semantic import (
+    regra_default,
+    regra_form,
+    WizardCheck,
+    EndpointCheck,
+    FlowCheck,
+    construir_tabela_simbolos,
+    resolver_programa,
+)
 
 
 def _insert_unique(mapping, key, value, description, lineno=None):
@@ -61,6 +72,12 @@ def p_program(p):
             _insert_unique(program_node.wizards, decl.name, decl, "Wizard", decl.lineno)
         elif isinstance(decl, ApiNode):
             _insert_unique(program_node.apis, decl.name, decl, "API", decl.lineno)
+
+    # MODIFICADO (SDD) — regra R7 (raiz): sintetiza program.symtab e, com a
+    # tabela completa, resolve as pendências (R2, R4, R5, R6) gerando
+    # program.errors. Todas as checagens locais (R1, R3) já foram feitas.
+    program_node.symtab = construir_tabela_simbolos(program_node)
+    program_node.errors = resolver_programa(program_node)
 
     p[0] = program_node
 
@@ -133,6 +150,10 @@ def p_form_decl(p):
                 form.validations, item.field_name, item,
                 "Bloco de validação", item.lineno
             )
+    # MODIFICADO (SDD) — regra R3 (local): validate x campos do form.
+    # form.checks = checks dos campos (R1/R2, com form_name preenchido aqui)
+    # seguidos dos erros do bloco validate.
+    form.checks = regra_form(form)
     p[0] = form
 
 
@@ -154,13 +175,18 @@ def p_form_element(p):
 def p_field_decl(p):
     "field_decl : IDENTIFIER COLON type_reference field_props_opt SEMICOLON"
     is_array, base_type = p[3]
-    p[0] = FormFieldNode(
+    node = FormFieldNode(
         lineno=p.lineno(1),
         name=p[1],
         field_type=base_type,
         is_array=is_array,
         properties=p[4],
     )
+    # MODIFICADO (SDD) — regra R1 (local): default compatível com o tipo.
+    # Se o default é referência Form.campo, vira pendência R2 (global),
+    # resolvida em `program`.
+    node.checks = regra_default(node)
+    p[0] = node
 
 
 def p_type_reference(p):
@@ -252,13 +278,17 @@ def p_validation_rule(p):
 def p_wizard_decl(p):
     "wizard_decl : WIZARD IDENTIFIER LBRACE wizard_elements RBRACE"
     props = p[4]
-    p[0] = WizardNode(
+    node = WizardNode(
         lineno=p.lineno(1),
         name=p[2],
         steps=props.get("steps", []),
         target_api=props.get("target_api"),
         target_verb=props.get("target_verb"),
     )
+    # MODIFICADO (SDD) — regra R4 (global): etapas, herança em ordem e API
+    # dependem de outros blocos; vira pendência resolvida em `program`.
+    node.checks = [WizardCheck(node)]
+    p[0] = node
 
 
 def p_wizard_elements(p):
@@ -309,7 +339,11 @@ def p_api_decl(p):
                 f"{endpoint.method} {endpoint.route}"
             )
         seen.add(identity)
-    p[0] = ApiNode(lineno=p.lineno(1), name=p[2], endpoints=p[4])
+    node = ApiNode(lineno=p.lineno(1), name=p[2], endpoints=p[4])
+    # MODIFICADO (SDD): api_decl.checks = concatenação dos checks dos endpoints
+    # (atributo sintetizado), na ordem de declaração.
+    node.checks = [c for endpoint in node.endpoints for c in endpoint.checks]
+    p[0] = node
 
 
 def p_endpoint_list(p):
@@ -324,7 +358,7 @@ def p_endpoint_list(p):
 def p_endpoint_decl(p):
     "endpoint_decl : http_verb STRING_LIT LBRACE endpoint_props RBRACE"
     props = p[4]
-    p[0] = EndpointNode(
+    node = EndpointNode(
         lineno=p.lineno(1),
         method=p[1],
         route=p[2],
@@ -332,6 +366,10 @@ def p_endpoint_decl(p):
         produces=props.get("produces"),
         headers=props.get("headers", {}),
     )
+    # MODIFICADO (SDD) — regra R5 (global): consumes e {param} da rota.
+    # Obs.: lineno continua p.lineno(1) de um não-terminal (0), como antes.
+    node.checks = [EndpointCheck(node)]
+    p[0] = node
 
 
 def p_http_verb(p):
@@ -385,13 +423,16 @@ def p_header_list(p):
 
 def p_flow_decl(p):
     "flow_decl : FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE"
-    p[0] = FlowNode(
+    node = FlowNode(
         lineno=p.lineno(1),
         name=p[2],
         source_form=p[4],
         target_api=p[6],
         target_verb=p[8],
     )
+    # MODIFICADO (SDD) — regra R6 (global): origem, API e verbo do flow.
+    node.checks = [FlowCheck(node)]
+    p[0] = node
 
 
 # ---------------------------------------------------------------------------
@@ -446,3 +487,4 @@ def build_parser():
         debug=False,
         errorlog=yacc.NullLogger(),
     )
+    

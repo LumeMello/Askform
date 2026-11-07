@@ -39,6 +39,9 @@ class FormFieldNode(ASTNode):
     field_type: str = ""
     is_array: bool = False
     properties: Dict[str, Any] = field(default_factory=dict)
+    # MODIFICADO (SDD): atributo sintetizado `checks` (verificações semânticas
+    # calculadas pela ação da produção field_decl; ver semantic.py e tabela.md).
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class ValidationBlockNode(ASTNode):
@@ -50,6 +53,8 @@ class FormNode(ASTNode):
     name: str = ""
     fields: Dict[str, FormFieldNode] = field(default_factory=dict)
     validations: Dict[str, ValidationBlockNode] = field(default_factory=dict)
+    # MODIFICADO (SDD): atributo sintetizado `checks` (ordenado).
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class WizardNode(ASTNode):
@@ -57,6 +62,8 @@ class WizardNode(ASTNode):
     steps: List[str] = field(default_factory=list)
     target_api: Optional[str] = None
     target_verb: Optional[str] = None
+    # MODIFICADO (SDD): atributo sintetizado `checks`.
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class EndpointNode(ASTNode):
@@ -65,11 +72,15 @@ class EndpointNode(ASTNode):
     consumes: Optional[str] = None
     produces: Optional[str] = None
     headers: Dict[str, str] = field(default_factory=dict)
+    # MODIFICADO (SDD): atributo sintetizado `checks`.
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class ApiNode(ASTNode):
     name: str = ""
     endpoints: List[EndpointNode] = field(default_factory=list)
+    # MODIFICADO (SDD): atributo sintetizado `checks` (concatena os dos endpoints).
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class FlowNode(ASTNode):
@@ -77,6 +88,8 @@ class FlowNode(ASTNode):
     source_form: str = ""
     target_api: str = ""
     target_verb: str = ""
+    # MODIFICADO (SDD): atributo sintetizado `checks`.
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class ProgramNode(ASTNode):
@@ -85,6 +98,10 @@ class ProgramNode(ASTNode):
     wizards: Dict[str, WizardNode] = field(default_factory=dict)
     apis: Dict[str, ApiNode] = field(default_factory=dict)
     flow: Optional[FlowNode] = None
+    # MODIFICADO (SDD): atributos sintetizados da produção raiz `program`:
+    # tabela de símbolos e lista final de erros semânticos.
+    symtab: Any = field(default=None, repr=False, compare=False)
+    errors: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 class SymbolTable:
     def __init__(self):
