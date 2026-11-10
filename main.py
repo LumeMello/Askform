@@ -58,8 +58,12 @@ def compile_dsl(source_code: str):
     print(json.dumps(summary, indent=2))
 
     print("Phase 3: Code Generation...")
-    generate_html(ast)
-    generate_flask(ast)
+    try:
+        generate_html(ast)
+        generate_flask(ast)
+    except ValueError as e:
+        print(f"Code Generation Failed: {e}")
+        return False
     print("Artifacts generated successfully.")
     return True
 

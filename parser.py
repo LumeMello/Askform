@@ -28,11 +28,23 @@ from symbol_table import (
     FormNode,
     FormFieldNode,
     ValidationBlockNode,
-    WizardNode,
     FieldRefNode,
     ApiNode,
     EndpointNode,
     FlowNode,
+    TransitionNode,
+    ConditionNode,
+)
+# MODIFICADO (SDD): as regras semânticas (R1..R7) ficam em semantic.py e são
+# chamadas pelas ações das produções abaixo; ver tabela.md.
+from semantic import (
+    regra_default,
+    regra_form,
+    TransitionCheck,
+    EndpointCheck,
+    regra_flow,
+    construir_tabela_simbolos,
+    resolver_programa,
 )
 
 
@@ -57,10 +69,14 @@ def p_program(p):
     for decl in p[2]:
         if isinstance(decl, FormNode):
             _insert_unique(program_node.forms, decl.name, decl, "Formulário", decl.lineno)
-        elif isinstance(decl, WizardNode):
-            _insert_unique(program_node.wizards, decl.name, decl, "Wizard", decl.lineno)
         elif isinstance(decl, ApiNode):
             _insert_unique(program_node.apis, decl.name, decl, "API", decl.lineno)
+
+    # MODIFICADO (SDD) — regra R7 (raiz): sintetiza program.symtab e, com a
+    # tabela completa, resolve as pendências (R2, R4, R5, R6) gerando
+    # program.errors. Todas as checagens locais (R1, R3) já foram feitas.
+    program_node.symtab = construir_tabela_simbolos(program_node)
+    program_node.errors = resolver_programa(program_node)
 
     p[0] = program_node
 
@@ -82,7 +98,6 @@ def p_body_declarations(p):
 
 def p_body_declaration(p):
     """body_declaration : form_decl
-                        | wizard_decl
                         | api_decl"""
     p[0] = p[1]
 
@@ -133,6 +148,10 @@ def p_form_decl(p):
                 form.validations, item.field_name, item,
                 "Bloco de validação", item.lineno
             )
+    # MODIFICADO (SDD) — regra R3 (local): validate x campos do form.
+    # form.checks = checks dos campos (R1/R2, com form_name preenchido aqui)
+    # seguidos dos erros do bloco validate.
+    form.checks = regra_form(form)
     p[0] = form
 
 
@@ -154,13 +173,18 @@ def p_form_element(p):
 def p_field_decl(p):
     "field_decl : IDENTIFIER COLON type_reference field_props_opt SEMICOLON"
     is_array, base_type = p[3]
-    p[0] = FormFieldNode(
+    node = FormFieldNode(
         lineno=p.lineno(1),
         name=p[1],
         field_type=base_type,
         is_array=is_array,
         properties=p[4],
     )
+    # MODIFICADO (SDD) — regra R1 (local): default compatível com o tipo.
+    # Se o default é referência Form.campo, vira pendência R2 (global),
+    # resolvida em `program`.
+    node.checks = regra_default(node)
+    p[0] = node
 
 
 def p_type_reference(p):
@@ -246,55 +270,6 @@ def p_validation_rule(p):
 
 
 # ---------------------------------------------------------------------------
-# Wizards
-# ---------------------------------------------------------------------------
-
-def p_wizard_decl(p):
-    "wizard_decl : WIZARD IDENTIFIER LBRACE wizard_elements RBRACE"
-    props = p[4]
-    p[0] = WizardNode(
-        lineno=p.lineno(1),
-        name=p[2],
-        steps=props.get("steps", []),
-        target_api=props.get("target_api"),
-        target_verb=props.get("target_verb"),
-    )
-
-
-def p_wizard_elements(p):
-    """wizard_elements : wizard_elements wizard_element
-                       | empty"""
-    if len(p) == 3:
-        props = dict(p[1])
-        _merge_unique(props, p[2], "Propriedade de wizard", p.lineno(2))
-        p[0] = props
-    else:
-        p[0] = {}
-
-
-def p_wizard_element(p):
-    """wizard_element : STEPS EQUALS LBRACKET step_list RBRACKET SEMICOLON
-                      | SUBMIT EQUALS IDENTIFIER DOT http_verb SEMICOLON"""
-    if p.slice[1].type == "STEPS":
-        p[0] = {"steps": p[4]}
-    else:
-        p[0] = {"target_api": p[3], "target_verb": p[5]}
-
-
-def p_step_list(p):
-    """step_list : step_list COMMA IDENTIFIER
-                 | IDENTIFIER"""
-    if len(p) == 4:
-        if p[3] in p[1]:
-            raise SyntaxError(
-                f"Etapa duplicada no wizard na linha {p.lineno(3)}: {p[3]!r}"
-            )
-        p[0] = p[1] + [p[3]]
-    else:
-        p[0] = [p[1]]
-
-
-# ---------------------------------------------------------------------------
 # APIs e endpoints
 # ---------------------------------------------------------------------------
 
@@ -309,7 +284,11 @@ def p_api_decl(p):
                 f"{endpoint.method} {endpoint.route}"
             )
         seen.add(identity)
-    p[0] = ApiNode(lineno=p.lineno(1), name=p[2], endpoints=p[4])
+    node = ApiNode(lineno=p.lineno(1), name=p[2], endpoints=p[4])
+    # MODIFICADO (SDD): api_decl.checks = concatenação dos checks dos endpoints
+    # (atributo sintetizado), na ordem de declaração.
+    node.checks = [c for endpoint in node.endpoints for c in endpoint.checks]
+    p[0] = node
 
 
 def p_endpoint_list(p):
@@ -324,7 +303,7 @@ def p_endpoint_list(p):
 def p_endpoint_decl(p):
     "endpoint_decl : http_verb STRING_LIT LBRACE endpoint_props RBRACE"
     props = p[4]
-    p[0] = EndpointNode(
+    node = EndpointNode(
         lineno=p.lineno(1),
         method=p[1],
         route=p[2],
@@ -332,6 +311,10 @@ def p_endpoint_decl(p):
         produces=props.get("produces"),
         headers=props.get("headers", {}),
     )
+    # MODIFICADO (SDD) — regra R5 (global): consumes e {param} da rota.
+    # Obs.: lineno continua p.lineno(1) de um não-terminal (0), como antes.
+    node.checks = [EndpointCheck(node)]
+    p[0] = node
 
 
 def p_http_verb(p):
@@ -384,14 +367,85 @@ def p_header_list(p):
 # ---------------------------------------------------------------------------
 
 def p_flow_decl(p):
-    "flow_decl : FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE"
-    p[0] = FlowNode(
+    "flow_decl : FLOW IDENTIFIER LBRACE transition_list RBRACE"
+    node = FlowNode(lineno=p.lineno(1), name=p[2], transitions=p[4])
+    # MODIFICADO — regra R6 (global): navegação entre etapas (caminhos,
+    # ciclos, herança em ordem, envio). As checagens de cada transição (R4)
+    # entram antes, na ordem de declaração.
+    node.checks = regra_flow(node)
+    p[0] = node
+
+
+def p_transition_list(p):
+    """transition_list : transition_list transition
+                       | transition"""
+    if len(p) == 3:
+        p[0] = p[1] + [p[2]]
+    else:
+        p[0] = [p[1]]
+
+
+def p_transition(p):
+    "transition : IDENTIFIER ARROW flow_target condition_opt SEMICOLON"
+    target_form, target_api, target_verb = p[3]
+    node = TransitionNode(
         lineno=p.lineno(1),
-        name=p[2],
-        source_form=p[4],
-        target_api=p[6],
-        target_verb=p[8],
+        source_form=p[1],
+        target_form=target_form,
+        target_api=target_api,
+        target_verb=target_verb,
+        condition=p[4],
     )
+    # Regra R4 (global): origem, destino (etapa ou API.VERBO) e condição.
+    node.checks = [TransitionCheck(node)]
+    p[0] = node
+
+
+def p_flow_target(p):
+    """flow_target : IDENTIFIER
+                   | IDENTIFIER DOT http_verb"""
+    if len(p) == 2:
+        p[0] = (p[1], None, None)          # próxima etapa (outra página)
+    else:
+        p[0] = (None, p[1], p[3])          # envio para a API
+
+
+def p_condition_opt(p):
+    """condition_opt : WHEN condition
+                     | empty"""
+    p[0] = p[2] if len(p) == 3 else None
+
+
+def p_condition(p):
+    """condition : IDENTIFIER comparison_op condition_value
+                 | IDENTIFIER DOT IDENTIFIER comparison_op condition_value"""
+    if len(p) == 4:
+        p[0] = ConditionNode(
+            lineno=p.lineno(1), form_name=None, field_name=p[1],
+            operator=p[2], value=p[3],
+        )
+    else:
+        p[0] = ConditionNode(
+            lineno=p.lineno(1), form_name=p[1], field_name=p[3],
+            operator=p[4], value=p[5],
+        )
+
+
+def p_comparison_op(p):
+    """comparison_op : EQ
+                     | NE
+                     | LT
+                     | LE
+                     | GT
+                     | GE"""
+    p[0] = p[1]
+
+
+def p_condition_value(p):
+    """condition_value : STRING_LIT
+                       | number_lit
+                       | boolean_literal"""
+    p[0] = p[1]
 
 
 # ---------------------------------------------------------------------------
@@ -446,3 +500,4 @@ def build_parser():
         debug=False,
         errorlog=yacc.NullLogger(),
     )
+    

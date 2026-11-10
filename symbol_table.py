@@ -14,7 +14,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-Symbol Table and Abstract Syntax Tree (AST) node definitions with Theme and Wizard support.
+Symbol Table and Abstract Syntax Tree (AST) node definitions with Theme and Flow support.
 """
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional
@@ -39,6 +39,9 @@ class FormFieldNode(ASTNode):
     field_type: str = ""
     is_array: bool = False
     properties: Dict[str, Any] = field(default_factory=dict)
+    # MODIFICADO (SDD): atributo sintetizado `checks` (verificações semânticas
+    # calculadas pela ação da produção field_decl; ver semantic.py e tabela.md).
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class ValidationBlockNode(ASTNode):
@@ -50,13 +53,8 @@ class FormNode(ASTNode):
     name: str = ""
     fields: Dict[str, FormFieldNode] = field(default_factory=dict)
     validations: Dict[str, ValidationBlockNode] = field(default_factory=dict)
-
-@dataclass
-class WizardNode(ASTNode):
-    name: str = ""
-    steps: List[str] = field(default_factory=list)
-    target_api: Optional[str] = None
-    target_verb: Optional[str] = None
+    # MODIFICADO (SDD): atributo sintetizado `checks` (ordenado).
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class EndpointNode(ASTNode):
@@ -65,32 +63,66 @@ class EndpointNode(ASTNode):
     consumes: Optional[str] = None
     produces: Optional[str] = None
     headers: Dict[str, str] = field(default_factory=dict)
+    # MODIFICADO (SDD): atributo sintetizado `checks`.
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class ApiNode(ASTNode):
     name: str = ""
     endpoints: List[EndpointNode] = field(default_factory=list)
+    # MODIFICADO (SDD): atributo sintetizado `checks` (concatena os dos endpoints).
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
+
+@dataclass
+class ConditionNode(ASTNode):
+    """Condição `when campo OP valor` (ou `when Form.campo OP valor`)."""
+    form_name: Optional[str] = None   # None = campo da própria etapa de origem
+    field_name: str = ""
+    operator: str = ""                # ==, !=, <, <=, >, >=
+    value: Any = None
+
+@dataclass
+class TransitionNode(ASTNode):
+    """
+    Uma linha do flow: `Origem -> Destino [when ...];`.
+    O destino é outra etapa (target_form) ou o envio para uma API
+    (target_api + target_verb); nunca os dois.
+    """
+    source_form: str = ""
+    target_form: Optional[str] = None
+    target_api: Optional[str] = None
+    target_verb: Optional[str] = None
+    condition: Optional[ConditionNode] = None
+    # Atributo sintetizado `checks` (regra R4).
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
+
+    @property
+    def is_submit(self) -> bool:
+        return self.target_api is not None
 
 @dataclass
 class FlowNode(ASTNode):
+    """Fluxo da aplicação: etapas (formulários), caminhos e envio para a API."""
     name: str = ""
-    source_form: str = ""
-    target_api: str = ""
-    target_verb: str = ""
+    transitions: List[TransitionNode] = field(default_factory=list)
+    # MODIFICADO (SDD): atributo sintetizado `checks`.
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 @dataclass
 class ProgramNode(ASTNode):
     theme: Optional[ThemeNode] = None
     forms: Dict[str, FormNode] = field(default_factory=dict)
-    wizards: Dict[str, WizardNode] = field(default_factory=dict)
     apis: Dict[str, ApiNode] = field(default_factory=dict)
     flow: Optional[FlowNode] = None
+    # MODIFICADO (SDD): atributos sintetizados da produção raiz `program`:
+    # tabela de símbolos e lista final de erros semânticos.
+    symtab: Any = field(default=None, repr=False, compare=False)
+    errors: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 class SymbolTable:
     def __init__(self):
         self.themes: Dict[str, ThemeNode] = {}
         self.forms: Dict[str, FormNode] = {}
-        self.wizards: Dict[str, WizardNode] = {}
         self.apis: Dict[str, ApiNode] = {}
         self.flows: Dict[str, FlowNode] = {}
 
@@ -99,9 +131,6 @@ class SymbolTable:
 
     def insert_form(self, form: FormNode):
         self.forms[form.name] = form
-
-    def insert_wizard(self, wizard: WizardNode):
-        self.wizards[wizard.name] = wizard
 
     def insert_api(self, api: ApiNode):
         self.apis[api.name] = api

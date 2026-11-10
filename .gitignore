@@ -1,2 +1,4 @@
 /__pycache__
 /dist
+/oracle/__pycache__
+/tests/__pycache__

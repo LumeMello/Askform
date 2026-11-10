@@ -18,6 +18,11 @@ Gerador de backend Flask para o Askform.
 
 Gera endpoints REST com persistência SQLite, validação no servidor,
 armazenamento seguro de arquivos enviados e suporte a CORS.
+
+Um endpoint com `consumes = <Flow>` recebe os campos de todas as etapas do
+flow numa só tabela. Só os campos das etapas que sempre são visitadas antes
+desse envio continuam obrigatórios; os de etapas de outros caminhos viram
+opcionais.
 """
 from __future__ import annotations
 
@@ -25,7 +30,8 @@ import os
 import re
 from typing import Any, Dict, List
 
-from symbol_table import ProgramNode
+from flow_graph import FlowGraph
+from symbol_table import ProgramNode, FieldRefNode
 
 
 class CodeWriter:
@@ -67,7 +73,7 @@ def _safe_identifier(value: str, description: str) -> str:
     return value
 
 
-def _field_config(form: Any) -> Dict[str, Dict[str, Any]]:
+def _field_config(form: Any, optional: bool = False) -> Dict[str, Dict[str, Any]]:
     """Converte os campos e validações do AST em configuração serializável."""
     result: Dict[str, Dict[str, Any]] = {}
 
@@ -77,17 +83,31 @@ def _field_config(form: Any) -> Dict[str, Dict[str, Any]]:
         validation = getattr(form, "validations", {}).get(field_name)
         rules = getattr(validation, "rules", {}) if validation else {}
 
+        default = properties.get("default")
+        if isinstance(default, FieldRefNode):
+            # Herança entre etapas é resolvida na página; o servidor recebe o valor.
+            default = None
         result[field_name] = {
             "type": str(getattr(field, "field_type", "string")).lower(),
             "is_array": bool(getattr(field, "is_array", False)),
-            "required": bool(properties.get("required", False)),
-            "default": properties.get("default"),
+            "required": bool(properties.get("required", False)) and not optional,
+            "default": default,
             "min": rules.get("min"),
             "max": rules.get("max"),
             "pattern": rules.get("pattern"),
             "message": rules.get("message"),
         }
 
+    return result
+
+
+def _flow_field_config(ast: ProgramNode, method: str, api_name: str) -> Dict[str, Dict[str, Any]]:
+    """Campos de todas as etapas do flow, para um endpoint que consome o flow."""
+    graph = FlowGraph(ast.flow)
+    mandatory = graph.mandatory_steps(api_name, method)
+    result: Dict[str, Dict[str, Any]] = {}
+    for step in graph.steps:
+        result.update(_field_config(ast.forms[step], optional=step not in mandatory))
     return result
 
 
@@ -109,10 +129,17 @@ def _render_flask_app(ast: ProgramNode) -> str:
                 continue
 
             form = ast.forms.get(endpoint.consumes)
-            if form is None:
+            consumes_flow = (
+                form is None
+                and ast.flow is not None
+                and endpoint.consumes == ast.flow.name
+            )
+            if form is None and not consumes_flow:
                 continue
 
-            form_name = _safe_identifier(form.name, "Nome de formulário")
+            form_name = _safe_identifier(
+                form.name if form is not None else ast.flow.name, "Nome de formulário"
+            )
             table_name = form_name.lower()
             _safe_identifier(table_name, "Nome de tabela")
 
@@ -125,7 +152,10 @@ def _render_flask_app(ast: ProgramNode) -> str:
                 raise ValueError(f"Parâmetro de rota inválido: {route!r}")
 
             route_params = _ROUTE_PARAM_RE.findall(route)
-            fields = _field_config(form)
+            if form is not None:
+                fields = _field_config(form)
+            else:
+                fields = _flow_field_config(ast, method, api_name)
 
             for param_name in route_params:
                 if param_name not in fields:
