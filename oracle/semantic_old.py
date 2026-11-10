@@ -18,7 +18,7 @@ Analisador Semântico estendido para validação de Wizards, APIs, Flows e Heran
 """
 import re
 from typing import Any
-from symbol_table import ProgramNode, SymbolTable, FieldRefNode
+from symbol_table_old import ProgramNode, SymbolTable, FieldRefNode
 
 class SemanticAnalyzer:
     def __init__(self):

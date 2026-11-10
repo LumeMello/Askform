@@ -1,0 +1,91 @@
+theme Caminhos {
+  background = "#f1f5f9";
+  accent_color = "#0f766e";
+  border_radius = "10px";
+}
+
+form TipoClienteStep {
+  tipo: string {
+    label = "Tipo de cliente (PF ou PJ)";
+    required = true;
+  };
+  possuiIndicacao: boolean {
+    label = "Veio por indicação?";
+  };
+
+  validate tipo {
+    pattern = "^(PF|PJ)$";
+    message = "Informe PF ou PJ.";
+  }
+}
+
+form PessoaFisicaStep {
+  nomeCompleto: string {
+    label = "Nome completo";
+    required = true;
+  };
+  cpf: string {
+    label = "CPF";
+    required = true;
+  };
+  idade: integer {
+    label = "Idade";
+    required = true;
+  };
+}
+
+form ResponsavelMenorStep {
+  nomeResponsavel: string {
+    label = "Nome do responsável legal";
+    required = true;
+  };
+}
+
+form PessoaJuridicaStep {
+  razaoSocial: string {
+    label = "Razão social";
+    required = true;
+  };
+  cnpj: string {
+    label = "CNPJ";
+    required = true;
+  };
+}
+
+form IndicacaoStep {
+  codigoIndicacao: string {
+    label = "Código de indicação";
+    required = true;
+  };
+}
+
+form ContatoStep {
+  email: string {
+    label = "E-mail";
+    required = true;
+  };
+}
+
+api ClienteApi {
+  POST "/api/v1/clientes" {
+    consumes = CadastroFlow;
+    produces = uuid;
+  }
+}
+
+// Caminhos: as transições de cada etapa são testadas na ordem;
+// a transição sem `when` é o caminho padrão e fica por último.
+flow CadastroFlow {
+  TipoClienteStep -> PessoaJuridicaStep when tipo == "PJ";
+  TipoClienteStep -> PessoaFisicaStep;
+
+  PessoaFisicaStep -> ResponsavelMenorStep when idade < 18;
+  PessoaFisicaStep -> ContatoStep when TipoClienteStep.possuiIndicacao == false;
+  PessoaFisicaStep -> IndicacaoStep;
+
+  ResponsavelMenorStep -> ContatoStep;
+  PessoaJuridicaStep -> ContatoStep;
+  IndicacaoStep -> ContatoStep;
+
+  ContatoStep -> ClienteApi.POST;
+}

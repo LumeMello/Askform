@@ -15,7 +15,7 @@ O compilador lê arquivos de especificação (`.fad` / `.askform`), realiza aná
 
 ## 📐 Estrutura da Linguagem (Comandos e Blocos da DSL)
 
-A DSL é composta por 5 blocos estruturais de declaração: `theme`, `form`, `api`, `wizard` e `flow`.
+A DSL é composta por 4 blocos estruturais de declaração: `theme`, `form`, `api` e `flow`.
 
 ### 1. Bloco `theme` (Estilização da Interface)
 Define as variáveis visuais para renderização do CSS do formulário HTML gerado.
@@ -114,29 +114,67 @@ api UserApi {
 
 * **Verbos HTTP suportados:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`.
 * **Parâmetros de Rota:** Declarações entre chaves (ex: `{userId}`) capturam parâmetros dinâmicos vinculados aos campos do formulário.
+* **`consumes`:** nome de um `form` ou do `flow`. Um endpoint com `consumes = NomeDoFlow` recebe os campos de todas as etapas do flow (veja abaixo).
 
 ---
 
-### 4. Bloco `wizard` (Formulários em Múltiplas Etapas)
-Permite encadear múltiplos formulários em etapas sequenciais com herança inter-etapas.
+### 4. Bloco `flow` (Navegação, Formulários Multi-Página e Caminhos)
+Liga os formulários entre si e à API. Cada linha é uma **transição** `Origem -> Destino;`, onde o destino é outra etapa (outra página) ou o envio `Api.VERBO`.
 
-```dsl
-wizard RegistrationWizard {
-  steps = [StepOneForm, StepTwoForm];
-  submit = UserApi.POST;
-}
-```
-
----
-
-### 5. Bloco `flow` (Vínculo da Aplicação)
-Realiza a ligação direta entre a interface de origem (`form`) e o verbo da API (`api`).
+**Formulário de uma página** (igual às versões anteriores):
 
 ```dsl
 flow UserRegistrationFlow {
   ProfileForm -> UserApi.POST;
 }
 ```
+
+**Formulário multi-página:** cada `form` vira uma etapa. A etapa inicial é a origem da primeira transição. Um campo pode herdar o valor de uma etapa anterior com `default = Etapa.campo;`.
+
+```dsl
+api ClienteApi {
+  POST "/api/v1/clientes" {
+    consumes = CadastroClienteFlow;   // recebe os campos de todas as etapas
+    produces = uuid;
+  }
+}
+
+flow CadastroClienteFlow {
+  ResponsavelLegalStep -> DadosCobrancaStep;
+  DadosCobrancaStep -> ClienteApi.POST;
+}
+```
+
+**Caminhos (desvios condicionais):** use `when campo OPERADOR valor` para escolher a próxima etapa. As transições de uma etapa são testadas na ordem em que aparecem; a primeira que casar decide o caminho. A transição sem `when` é o caminho padrão e deve ser a última.
+
+```dsl
+flow CadastroFlow {
+  TipoClienteStep -> PessoaJuridicaStep when tipo == "PJ";
+  TipoClienteStep -> PessoaFisicaStep;
+
+  PessoaFisicaStep -> ResponsavelMenorStep when idade < 18;
+  PessoaFisicaStep -> ContatoStep when TipoClienteStep.possuiIndicacao == false;
+  PessoaFisicaStep -> IndicacaoStep;
+
+  ResponsavelMenorStep -> ContatoStep;
+  PessoaJuridicaStep -> ContatoStep;
+  IndicacaoStep -> ContatoStep;
+
+  ContatoStep -> ClienteApi.POST;
+}
+```
+
+* **Operadores:** `==`, `!=` (todos os tipos) e `<`, `<=`, `>`, `>=` (`integer`, `float` e `date`).
+* **Campo da condição:** `campo` (da própria etapa de origem) ou `Etapa.campo` (de uma etapa que vem antes em todos os caminhos). Campos `file` e listas (`tipo[]`) não podem ser usados.
+* **Valor:** literal do mesmo tipo do campo (`"texto"`, `10`, `1.5`, `true`/`false`; datas como `"2024-01-31"`). Campo vazio nunca satisfaz a condição.
+* **Envio:** o envio para a API (`Etapa -> Api.VERBO`) pode acontecer em qualquer etapa e mandar para APIs diferentes em cada caminho. Só os dados das etapas do caminho percorrido são enviados. Depois de mais de uma etapa, o endpoint precisa ter `consumes = NomeDoFlow`.
+* **Backend:** o endpoint que consome o flow grava os campos de todas as etapas na mesma tabela. Campos `required` só são exigidos se a etapa aparece em todos os caminhos até aquele envio.
+
+**Regras verificadas pelo compilador:** etapas e APIs existentes; verbo suportado pela API; tipos e operadores das condições; toda etapa com saída e com um caminho padrão (sem `when`), que deve ser o último; nenhuma transição inalcançável depois do caminho padrão; nenhum ciclo; todas as etapas alcançáveis a partir da inicial; nomes de campo únicos entre as etapas; herança (`default = Etapa.campo`) e condições `Etapa.campo` só de etapas que vêm antes em todos os caminhos; e o nome do flow diferente do nome de qualquer formulário.
+
+**Saída gerada:** um flow de uma linha gera a página do formulário (`dist/<form>.html`), como antes. Um flow com várias etapas ou com `when` gera uma única página `dist/<flow>.html` com botões **Voltar** e **Próximo** (o último vira **Enviar dados**).
+
+> O antigo bloco `wizard` foi removido: o que ele fazia (etapas em sequência, herança entre etapas e envio para a API) agora é escrito no `flow`.
 
 ---
 
@@ -154,7 +192,7 @@ pip install ply flask werkzeug
 
 ### 1. Compilando o arquivo DSL
 
-Para compilar seu arquivo de especificação Askform (ex: `exemplo.fad`):
+Para compilar seu arquivo de especificação Askform (ex: `exemplo.fad`). Exemplos prontos: `teste.fad` (uma página), `teste_multipagina.fad` (duas páginas com herança) e `teste_caminhos.fad` (caminhos condicionais).
 
 ```bash
 python main.py exemplo.fad
@@ -219,6 +257,20 @@ Ao preencher os campos e clicar em **Enviar dados**:
   }
 }
 ```
+
+---
+
+### 4. Rodando os testes
+
+```bash
+python tests/test_flow.py
+```
+
+```bash
+python oracle/test_oracle.py
+```
+
+O primeiro cobre o flow multi-etapas; o segundo compara o compilador com a versão anterior em programas que não usam os recursos novos.
 
 ---
 

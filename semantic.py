@@ -32,18 +32,23 @@ O mapa produção -> regra está em tabela.md. Identificadores das regras:
   R1  field_decl            default compatível com o tipo        (local)
   R2  field_decl            herança `default = Form.campo`       (global, RefCheck)
   R3  form_decl             regras do bloco `validate`           (local)
-  R4  wizard_decl           etapas, herança em ordem e API       (global, WizardCheck)
+  R4  transition            origem, destino e condição `when`    (global, TransitionCheck)
   R5  endpoint_decl         consumes e {param} da rota           (global, EndpointCheck)
-  R6  flow_decl             origem, API e verbo                  (global, FlowCheck)
+  R6  flow_decl             caminhos entre etapas e envio        (global, FlowCheck)
   R7  program               tabela de símbolos e resolução       (raiz)
 
-O comportamento (mensagens, linhas e ordem) é idêntico ao da versão anterior.
+MODIFICADO (flow multi-etapas): o bloco `wizard` foi removido. Formulários de
+várias páginas e caminhos condicionais agora são declarados no `flow`; as
+regras R4 e R6 cobrem o que antes era do wizard (etapas existentes, herança
+em ordem e API de envio). Programas sem wizard mantêm as mesmas mensagens.
 """
+import datetime
 import re
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 from symbol_table import ProgramNode, SymbolTable, FieldRefNode
+from flow_graph import FlowGraph
 
 
 # ---------------------------------------------------------------------------
@@ -188,38 +193,82 @@ def regra_form(form) -> List[Verificacao]:
 
 
 # ---------------------------------------------------------------------------
-# R4 — wizard_decl (GLOBAL)
+# R4 — transition (GLOBAL): `Origem -> Destino [when cond];`
 # ---------------------------------------------------------------------------
 
+_ORDERED_TYPES = ('integer', 'float', 'date')
+_EQUALITY_OPS = ('==', '!=')
+
+
+def _condition_value_ok(field_type: str, val: Any) -> bool:
+    if field_type in ('string', 'uuid', 'date'):
+        return isinstance(val, str)
+    if field_type == 'integer':
+        return isinstance(val, int) and not isinstance(val, bool)
+    if field_type == 'float':
+        return isinstance(val, (int, float)) and not isinstance(val, bool)
+    if field_type == 'boolean':
+        return isinstance(val, bool)
+    return False
+
+
+def _show(val: Any) -> str:
+    if isinstance(val, bool):
+        return 'true' if val else 'false'
+    return str(val)
+
+
 @dataclass
-class WizardCheck(Verificacao):
-    wizard: Any
+class TransitionCheck(Verificacao):
+    transition: Any
+    flow_name: Optional[str] = None     # preenchido por flow_decl (regra_flow)
 
     def resolver(self, st: SymbolTable) -> List[Erro]:
-        wizard = self.wizard
+        t = self.transition
+        flow = self.flow_name
         erros: List[Erro] = []
-        seen_steps: List[str] = []
-        for step_form in wizard.steps:
-            if step_form not in st.forms:
-                erros.append(Erro(wizard.lineno, f"Wizard '{wizard.name}' referencia etapa indefinida '{step_form}'."))
-                continue
-            form_obj = st.forms[step_form]
-            for campo in form_obj.fields.values():
-                val = campo.properties.get('default')
-                if isinstance(val, FieldRefNode):
-                    if val.form_name not in seen_steps:
-                        erros.append(Erro(
-                            campo.lineno,
-                            f"A etapa '{step_form}' tenta herdar o valor de '{val.form_name}' antes de ele ser renderizado no Wizard."
-                        ))
-            seen_steps.append(step_form)
-        if wizard.target_api:
-            if wizard.target_api not in st.apis:
-                erros.append(Erro(wizard.lineno, f"Wizard '{wizard.name}' aponta para API inexistente '{wizard.target_api}'."))
-            else:
-                api = st.apis[wizard.target_api]
-                if not any(ep.method == wizard.target_verb for ep in api.endpoints):
-                    erros.append(Erro(wizard.lineno, f"API '{wizard.target_api}' não suporta o verbo '{wizard.target_verb}'."))
+        if t.source_form not in st.forms:
+            erros.append(Erro(t.lineno, f"Flow '{flow}' referencia origem inexistente '{t.source_form}'."))
+        if t.target_form is not None:
+            if t.target_form not in st.forms:
+                erros.append(Erro(t.lineno, f"Flow '{flow}' referencia etapa inexistente '{t.target_form}'."))
+        elif t.target_api not in st.apis:
+            erros.append(Erro(t.lineno, f"Flow '{flow}' referencia API inexistente '{t.target_api}'."))
+        else:
+            target = st.apis[t.target_api]
+            if not any(ep.method == t.target_verb for ep in target.endpoints):
+                erros.append(Erro(t.lineno, f"API destino '{t.target_api}' não suporta o verbo '{t.target_verb}' no flow."))
+        if t.condition is not None:
+            erros.extend(self._resolver_condicao(st))
+        return erros
+
+    def _resolver_condicao(self, st: SymbolTable) -> List[Erro]:
+        t = self.transition
+        c = t.condition
+        form_name = c.form_name or t.source_form
+        if form_name not in st.forms:
+            if c.form_name is None:
+                return []          # origem inexistente já foi informada
+            return [Erro(c.lineno, f"Condição do flow '{self.flow_name}' referencia formulário inexistente '{form_name}'.")]
+        form = st.forms[form_name]
+        if c.field_name not in form.fields:
+            return [Erro(c.lineno, f"Condição do flow '{self.flow_name}' referencia campo inexistente '{c.field_name}' na etapa '{form_name}'.")]
+        campo = form.fields[c.field_name]
+        f_type = campo.field_type
+        if f_type == 'file':
+            return [Erro(c.lineno, f"Campo '{c.field_name}' do tipo 'file' não pode ser usado em condição.")]
+        if campo.is_array:
+            return [Erro(c.lineno, f"Campo '{c.field_name}' é uma lista e não pode ser usado em condição.")]
+        erros: List[Erro] = []
+        if not _condition_value_ok(f_type, c.value):
+            erros.append(Erro(c.lineno, f"Valor '{_show(c.value)}' é incompatível com o tipo '{f_type}' do campo '{c.field_name}' na condição."))
+        elif f_type == 'date':
+            try:
+                datetime.date.fromisoformat(c.value)
+            except ValueError:
+                erros.append(Erro(c.lineno, f"Valor '{c.value}' não é uma data válida (use AAAA-MM-DD) na condição."))
+        if c.operator not in _EQUALITY_OPS and f_type not in _ORDERED_TYPES:
+            erros.append(Erro(c.lineno, f"Operador '{c.operator}' não pode ser usado com o campo '{c.field_name}' do tipo '{f_type}'."))
         return erros
 
 
@@ -236,22 +285,45 @@ class EndpointCheck(Verificacao):
         if not ep.consumes:
             return []
         is_form = ep.consumes in st.forms
-        is_wizard = ep.consumes in st.wizards
-        if not (is_form or is_wizard):
-            return [Erro(ep.lineno, f"Endpoint '{ep.method} {ep.route}' consome formulário ou wizard inexistente '{ep.consumes}'.")]
+        is_flow = ep.consumes in st.flows
+        if not (is_form or is_flow):
+            return [Erro(ep.lineno, f"Endpoint '{ep.method} {ep.route}' consome formulário ou flow inexistente '{ep.consumes}'.")]
         erros: List[Erro] = []
+        params = re.findall(r'\{([a-zA-Z_][a-zA-Z0-9_]*)\}', ep.route)
         if is_form:
             form = st.forms[ep.consumes]
-            params = re.findall(r'\{([a-zA-Z_][a-zA-Z0-9_]*)\}', ep.route)
             for p in params:
                 if p not in form.fields:
                     erros.append(Erro(ep.lineno, f"Parâmetro de rota '{{{p}}}' não declarado no formulário '{form.name}'."))
+        else:
+            # Endpoint que recebe o flow inteiro: a rota pode usar campos de
+            # qualquer etapa.
+            flow = st.flows[ep.consumes]
+            campos = set()
+            for step in FlowGraph(flow).steps:
+                if step in st.forms:
+                    campos.update(st.forms[step].fields)
+            for p in params:
+                if p not in campos:
+                    erros.append(Erro(ep.lineno, f"Parâmetro de rota '{{{p}}}' não declarado em nenhuma etapa do flow '{flow.name}'."))
         return erros
 
 
 # ---------------------------------------------------------------------------
-# R6 — flow_decl (GLOBAL)
+# R6 — flow_decl (GLOBAL): navegação entre etapas
 # ---------------------------------------------------------------------------
+
+def regra_flow(flow) -> List[Verificacao]:
+    """
+    Atributo sintetizado flow_decl.checks. Assim como em regra_form, completa
+    o nome do flow nas verificações das transições (atributo herdado simulado).
+    """
+    for t in flow.transitions:
+        for c in t.checks:
+            if isinstance(c, TransitionCheck):
+                c.flow_name = flow.name
+    return [FlowCheck(flow)]
+
 
 @dataclass
 class FlowCheck(Verificacao):
@@ -260,18 +332,107 @@ class FlowCheck(Verificacao):
     def resolver(self, st: SymbolTable) -> List[Erro]:
         flow = self.flow
         erros: List[Erro] = []
-        valid_source = (
-            flow.source_form in st.forms
-            or flow.source_form in st.wizards
-        )
-        if not valid_source:
-            erros.append(Erro(flow.lineno, f"Flow '{flow.name}' referencia origem inexistente '{flow.source_form}'."))
-        if flow.target_api not in st.apis:
-            erros.append(Erro(flow.lineno, f"Flow '{flow.name}' referencia API inexistente '{flow.target_api}'."))
-        else:
-            target = st.apis[flow.target_api]
-            if not any(ep.method == flow.target_verb for ep in target.endpoints):
-                erros.append(Erro(flow.lineno, f"API destino '{flow.target_api}' não suporta o verbo '{flow.target_verb}' no flow."))
+        for form_name in st.forms:
+            if form_name.lower() == flow.name.lower():
+                erros.append(Erro(flow.lineno, f"Flow '{flow.name}' tem o mesmo nome do formulário '{form_name}'."))
+        transicoes: List[Erro] = []
+        for t in flow.transitions:
+            for c in t.checks:
+                transicoes.extend(c.resolver(st))
+        erros.extend(transicoes)
+        if transicoes:
+            # Com etapas ou APIs inexistentes, a análise do grafo só geraria ruído.
+            return erros
+        if FlowGraph(flow).is_simple():
+            # Flow de uma linha (`Form -> Api.VERBO;`): página única, mesmas
+            # regras de antes; não há navegação para verificar.
+            return erros
+        erros.extend(self._resolver_grafo(st))
+        return erros
+
+    def _resolver_grafo(self, st: SymbolTable) -> List[Erro]:
+        flow = self.flow
+        g = FlowGraph(flow)
+        erros: List[Erro] = []
+
+        # Saídas de cada etapa: precisa existir um caminho padrão (sem `when`),
+        # e ele deve ser o último, já que as transições são testadas em ordem.
+        for step in g.steps:
+            outs = g.outgoing.get(step, [])
+            if not outs:
+                linha = next(t.lineno for t in flow.transitions if t.target_form == step)
+                erros.append(Erro(linha, f"Etapa '{step}' do flow '{flow.name}' não tem transição de saída."))
+                continue
+            for i, t in enumerate(outs):
+                if t.condition is None and i < len(outs) - 1:
+                    for morta in outs[i + 1:]:
+                        erros.append(Erro(
+                            morta.lineno,
+                            f"Transição de '{step}' nunca é usada: a transição sem 'when' da linha {t.lineno} já é o caminho padrão."
+                        ))
+                    break
+            if all(t.condition is not None for t in outs):
+                erros.append(Erro(
+                    outs[-1].lineno,
+                    f"Etapa '{step}' do flow '{flow.name}' só tem transições com 'when'; adicione uma transição sem 'when' como caminho padrão."
+                ))
+
+        ciclo = g.find_cycle()
+        if ciclo:
+            erros.append(Erro(flow.lineno, f"Flow '{flow.name}' tem um ciclo entre as etapas: {' -> '.join(ciclo)}."))
+            return erros
+
+        alcancaveis = g.reachable()
+        for step in g.steps:
+            if step not in alcancaveis:
+                linha = next(t.lineno for t in flow.transitions if step in (t.source_form, t.target_form))
+                erros.append(Erro(linha, f"Etapa '{step}' do flow '{flow.name}' não é alcançável a partir da etapa inicial '{g.start}'."))
+
+        # Os dados de todas as etapas são enviados juntos: nomes de campo únicos.
+        dono = {}
+        for step in g.steps:
+            for campo in st.forms[step].fields.values():
+                if campo.name in dono:
+                    erros.append(Erro(
+                        campo.lineno,
+                        f"Campo '{campo.name}' aparece nas etapas '{dono[campo.name]}' e '{step}' do flow '{flow.name}'; os nomes de campo precisam ser únicos no flow."
+                    ))
+                else:
+                    dono[campo.name] = step
+
+        # Herança (`default = Form.campo`) e condições sobre `Form.campo` só
+        # podem usar etapas visitadas antes, em todos os caminhos.
+        dom = g.dominators()
+        for step in g.steps:
+            if step not in dom:
+                continue
+            for campo in st.forms[step].fields.values():
+                ref = campo.properties.get('default')
+                if isinstance(ref, FieldRefNode) and ref.form_name in st.forms and ref.form_name not in dom[step]:
+                    erros.append(Erro(
+                        campo.lineno,
+                        f"A etapa '{step}' tenta herdar o valor de '{ref.form_name}', mas '{ref.form_name}' não vem antes dela em todos os caminhos do flow '{flow.name}'."
+                    ))
+        for t in flow.transitions:
+            c = t.condition
+            if c is None or c.form_name is None or c.form_name == t.source_form:
+                continue
+            if t.source_form in dom and c.form_name not in dom[t.source_form]:
+                erros.append(Erro(
+                    c.lineno,
+                    f"A condição da transição de '{t.source_form}' usa '{c.form_name}.{c.field_name}', mas '{c.form_name}' não vem antes de '{t.source_form}' em todos os caminhos do flow '{flow.name}'."
+                ))
+
+        # Envio depois de várias etapas: a API precisa receber o flow inteiro.
+        for t in g.submits():
+            if t.source_form not in alcancaveis or not g.ancestors(t.source_form):
+                continue
+            api = st.apis[t.target_api]
+            if not any(ep.method == t.target_verb and ep.consumes == flow.name for ep in api.endpoints):
+                erros.append(Erro(
+                    t.lineno,
+                    f"A transição de '{t.source_form}' envia os dados de várias etapas para '{t.target_api}.{t.target_verb}', mas nenhum endpoint {t.target_verb} de '{t.target_api}' consome o flow (use consumes = {flow.name};)."
+                ))
         return erros
 
 
@@ -284,8 +445,6 @@ def construir_tabela_simbolos(ast: ProgramNode) -> SymbolTable:
     st = SymbolTable()
     for form in ast.forms.values():
         st.insert_form(form)
-    for wizard in ast.wizards.values():
-        st.insert_wizard(wizard)
     for api in ast.apis.values():
         st.insert_api(api)
     if ast.theme is not None:
@@ -305,14 +464,12 @@ def _resolver_lista(checks: List[Verificacao], st: SymbolTable) -> List[Erro]:
 def resolver_programa(ast: ProgramNode) -> List[Erro]:
     """
     Atributo sintetizado program.errors.
-    A ordem das mensagens é a mesma de antes: forms, wizards, apis, flow.
+    A ordem das mensagens é: forms, apis, flow.
     """
     st = ast.symtab
     erros: List[Erro] = []
     for form in st.forms.values():
         erros.extend(_resolver_lista(form.checks, st))
-    for wizard in st.wizards.values():
-        erros.extend(_resolver_lista(wizard.checks, st))
     for api in st.apis.values():
         erros.extend(_resolver_lista(api.checks, st))
     if ast.flow is not None:
