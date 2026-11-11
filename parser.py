@@ -33,7 +33,7 @@ from symbol_table import (
     EndpointNode,
     FlowNode,
     TransitionNode,
-    ConditionNode,
+    FieldRefExpr, LiteralExpr, CompareExpr, InExpr, EmptyExpr, NotExpr, LogicExpr,
 )
 # MODIFICADO (SDD): as regras semânticas (R1..R7) ficam em semantic.py e são
 # chamadas pelas ações das produções abaixo; ver tabela.md.
@@ -41,6 +41,7 @@ from semantic import (
     regra_default,
     regra_form,
     TransitionCheck,
+    Aviso,
     EndpointCheck,
     regra_flow,
     construir_tabela_simbolos,
@@ -76,7 +77,10 @@ def p_program(p):
     # tabela completa, resolve as pendências (R2, R4, R5, R6) gerando
     # program.errors. Todas as checagens locais (R1, R3) já foram feitas.
     program_node.symtab = construir_tabela_simbolos(program_node)
-    program_node.errors = resolver_programa(program_node)
+    diagnosticos = resolver_programa(program_node)
+    # MODIFICADO (avisos): erros impedem a compilação; avisos só são informados.
+    program_node.errors = [d for d in diagnosticos if not isinstance(d, Aviso)]
+    program_node.warnings = [d for d in diagnosticos if isinstance(d, Aviso)]
 
     p[0] = program_node
 
@@ -411,24 +415,102 @@ def p_flow_target(p):
 
 
 def p_condition_opt(p):
-    """condition_opt : WHEN condition
+    """condition_opt : WHEN expr
                      | empty"""
     p[0] = p[2] if len(p) == 3 else None
 
 
-def p_condition(p):
-    """condition : IDENTIFIER comparison_op condition_value
-                 | IDENTIFIER DOT IDENTIFIER comparison_op condition_value"""
+# MODIFICADO (expressões nas condições): gramática ESTRATIFICADA. A precedência
+# está na estrutura (cada nível chama o seguinte): comparação > not > and > or.
+# Todas as ações só sintetizam atributos locais (nó da AST e `deps`).
+
+def _deps(*nodes):
+    result = frozenset()
+    for node in nodes:
+        result |= node.deps
+    return result
+
+
+def p_expr(p):
+    """expr : expr OR and_expr
+            | and_expr"""
     if len(p) == 4:
-        p[0] = ConditionNode(
-            lineno=p.lineno(1), form_name=None, field_name=p[1],
-            operator=p[2], value=p[3],
-        )
+        p[0] = LogicExpr(lineno=p[1].lineno, op="or", left=p[1], right=p[3], deps=_deps(p[1], p[3]))
     else:
-        p[0] = ConditionNode(
-            lineno=p.lineno(1), form_name=p[1], field_name=p[3],
-            operator=p[4], value=p[5],
-        )
+        p[0] = p[1]
+
+
+def p_and_expr(p):
+    """and_expr : and_expr AND not_expr
+                | not_expr"""
+    if len(p) == 4:
+        p[0] = LogicExpr(lineno=p[1].lineno, op="and", left=p[1], right=p[3], deps=_deps(p[1], p[3]))
+    else:
+        p[0] = p[1]
+
+
+def p_not_expr(p):
+    """not_expr : NOT not_expr
+                | cmp_expr"""
+    if len(p) == 3:
+        p[0] = NotExpr(lineno=p.lineno(1), operand=p[2], deps=p[2].deps)
+    else:
+        p[0] = p[1]
+
+
+def p_cmp_expr(p):
+    """cmp_expr : operand comparison_op operand
+                | operand
+                | LPAREN expr RPAREN
+                | field_operand IN LPAREN literal_list RPAREN
+                | field_operand NOT IN LPAREN literal_list RPAREN
+                | field_operand IS EMPTY
+                | field_operand IS NOT EMPTY"""
+    n = len(p)
+    if n == 4 and p[1] == "(":
+        p[0] = p[2]
+    elif n == 4 and p[2] == "is":
+        p[0] = EmptyExpr(lineno=p[1].lineno, target=p[1], negated=False, deps=p[1].deps)
+    elif n == 4:
+        p[0] = CompareExpr(lineno=p[1].lineno, op=p[2], left=p[1], right=p[3], deps=_deps(p[1], p[3]))
+    elif n == 2:
+        p[0] = p[1]
+    elif n == 5:
+        p[0] = EmptyExpr(lineno=p[1].lineno, target=p[1], negated=True, deps=p[1].deps)
+    elif n == 6:
+        p[0] = InExpr(lineno=p[1].lineno, target=p[1], values=p[4], negated=False, deps=p[1].deps)
+    else:
+        p[0] = InExpr(lineno=p[1].lineno, target=p[1], values=p[5], negated=True, deps=p[1].deps)
+
+
+def p_operand(p):
+    """operand : field_operand
+               | literal"""
+    p[0] = p[1]
+
+
+def p_field_operand(p):
+    """field_operand : IDENTIFIER
+                     | IDENTIFIER DOT IDENTIFIER"""
+    if len(p) == 2:
+        p[0] = FieldRefExpr(lineno=p.lineno(1), form_name=None, field_name=p[1],
+                            deps=frozenset({(None, p[1])}))
+    else:
+        p[0] = FieldRefExpr(lineno=p.lineno(1), form_name=p[1], field_name=p[3],
+                            deps=frozenset({(p[1], p[3])}))
+
+
+def p_literal(p):
+    """literal : STRING_LIT
+               | number_lit
+               | boolean_literal"""
+    p[0] = LiteralExpr(lineno=p.lineno(1), value=p[1])
+
+
+def p_literal_list(p):
+    """literal_list : literal_list COMMA literal
+                    | literal"""
+    p[0] = p[1] + [p[3]] if len(p) == 4 else [p[1]]
 
 
 def p_comparison_op(p):
@@ -438,13 +520,6 @@ def p_comparison_op(p):
                      | LE
                      | GT
                      | GE"""
-    p[0] = p[1]
-
-
-def p_condition_value(p):
-    """condition_value : STRING_LIT
-                       | number_lit
-                       | boolean_literal"""
     p[0] = p[1]
 
 

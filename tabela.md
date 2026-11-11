@@ -16,15 +16,16 @@ Todos os atributos são **sintetizados** (calculados de baixo para cima na redu�
 | Símbolo | Atributo | Significado |
 |---|---|---|
 | tokens | `lexval`, `line` | texto e linha do token |
-| `number_lit`, `boolean_literal`, `literal_val`, `condition_value`, `field_ref` | `val` | valor Python (`int`, `float`, `str`, `bool`) ou `FieldRefNode` para `Form.campo` |
+| `number_lit`, `boolean_literal`, `literal_val`, `field_ref` | `val` | valor Python (`int`, `float`, `str`, `bool`) ou `FieldRefNode` para `Form.campo` |
 | `primitive_type`, `http_verb`, `comparison_op` | `type`, `val` | lexema do tipo / do verbo / do operador |
 | `flow_target` | `(form, api, verb)` | destino da transição: próxima etapa **ou** API + verbo |
-| `condition_opt`, `condition` | `ConditionNode` ou `None` | condição `when` da transição |
+| `condition_opt`, `expr`, `and_expr`, `not_expr`, `cmp_expr` | `ExprNode` ou `None` | condição `when` da transição (AST de expressão) + **`deps`**: conjunto sintetizado `{(form, campo)}` dos campos usados |
+| `operand`, `field_operand`, `literal`, `literal_list` | `FieldRefExpr` / `LiteralExpr` / lista | folhas e lista de literais da expressão |
 | `type_reference` | `(is_array, type)` | tipo base e se é array |
 | `*_props`, `validation_rules`, `header_list` | `props`, `rules`, `headers` | dicionários acumulados (união, com erro de parser se a chave repete) |
 | `*_list`, `form_elements`, `body_declarations` | `lista` | listas acumuladas na ordem do código-fonte |
 | `field_decl`, `form_decl`, `transition`, `endpoint_decl`, `api_decl`, `flow_decl` | nó da AST + **`checks`** | verificações semânticas ordenadas (ver seção 4) |
-| `program` | `symtab`, `errors` | tabela de símbolos e lista final de erros semânticos |
+| `program` | `symtab`, `errors`, `warnings` | tabela de símbolos, erros semânticos e avisos (`Aviso`, não impedem a compilação) |
 
 ## 3. Tabela de produções × regras semânticas
 
@@ -97,19 +98,14 @@ Natureza: **cópia** (repassa o atributo do filho), **constrói AST** (monta nó
 | 63 | `transition → IDENT -> flow_target condition_opt ;` | `node = TransitionNode(IDENT.lexval, flow_target.(form, api, verb), condition_opt.val)`; `node.checks = [TransitionCheck(node)]` → **R4** (global: origem, destino e condição) | **R4 (pendência)** | `p_transition` + `semantic.TransitionCheck` |
 | 64 | `flow_target → IDENT` | `val = (IDENT.lexval, None, None)` — próxima etapa (outra página) | constrói AST | `p_flow_target` |
 | 65 | `flow_target → IDENT . http_verb` | `val = (None, IDENT.lexval, http_verb.val)` — envio para a API | constrói AST | `p_flow_target` |
-| 66 | `condition_opt → WHEN condition` | `val = condition.node` | cópia | `p_condition_opt` |
+| 66 | `condition_opt → WHEN expr` | `val = expr.node` | cópia | `p_condition_opt` |
 | 67 | `condition_opt → empty` | `val = None` (transição padrão) | cópia | `p_condition_opt` |
-| 68 | `condition → IDENT comparison_op condition_value` | `node = ConditionNode(form=None, campo=IDENT.lexval, op=comparison_op.val, valor=condition_value.val)` — campo da etapa de origem | constrói AST | `p_condition` |
-| 69 | `condition → IDENT . IDENT comparison_op condition_value` | `node = ConditionNode(form=IDENT₁.lexval, campo=IDENT₂.lexval, op=comparison_op.val, valor=condition_value.val)` | constrói AST | `p_condition` |
 | 70 | `comparison_op → EQ` | `val = '=='` (lexema) | cópia | `p_comparison_op` |
 | 71 | `comparison_op → NE` | `val = '!='` | cópia | `p_comparison_op` |
 | 72 | `comparison_op → LT` | `val = '<'` | cópia | `p_comparison_op` |
 | 73 | `comparison_op → LE` | `val = '<='` | cópia | `p_comparison_op` |
 | 74 | `comparison_op → GT` | `val = '>'` | cópia | `p_comparison_op` |
 | 75 | `comparison_op → GE` | `val = '>='` | cópia | `p_comparison_op` |
-| 76 | `condition_value → STRING_LIT` | `val = STRING_LIT.lexval` | cópia | `p_condition_value` |
-| 77 | `condition_value → number_lit` | `val = number_lit.val` | cópia | `p_condition_value` |
-| 78 | `condition_value → boolean_literal` | `val = boolean_literal.val` | cópia | `p_condition_value` |
 | 79 | `number_lit → INT_LIT` | `val = INT_LIT.lexval` | cópia | `p_number_lit` |
 | 80 | `number_lit → FLOAT_LIT` | `val = FLOAT_LIT.lexval` | cópia | `p_number_lit` |
 | 81 | `boolean_literal → TRUE` | `val = True` | constrói AST | `p_boolean_literal` |
@@ -119,6 +115,30 @@ Natureza: **cópia** (repassa o atributo do filho), **constrói AST** (monta nó
 | 85 | `literal_val → boolean_literal` | `val = boolean_literal.val` | cópia | `p_literal_val` |
 | 86 | `literal_val → field_ref` | `val = field_ref.val` | cópia | `p_literal_val` |
 | 87 | `empty → ε` | `val = None` | cópia | `p_empty` |
+
+### 3.1 Produções das expressões (Parte E)
+
+Substituem as antigas #68, #69 e #76–#78 (`condition`, `condition_value`). A numeração acima ficou como estava; estas produções entram com os nomes dos métodos do `parser.py`. A gramática passa de 87 para **104 produções, 0 conflitos**. A numeração PLY completa é `parser.out`. A gramática é **estratificada** (um nível por precedência), sem `%precedence`:
+
+| Produção | Regra semântica (atributos sintetizados) | Tipo | Função |
+|---|---|---|---|
+| `expr → expr OR and_expr` | `node = LogicExpr('or', e, a)`; `deps = e.deps ∪ a.deps` | constrói AST + união | `p_expr` |
+| `expr → and_expr` | cópia | cópia | `p_expr` |
+| `and_expr → and_expr AND not_expr` | `node = LogicExpr('and', a, n)`; `deps` = união | constrói AST + união | `p_and_expr` |
+| `and_expr → not_expr` | cópia | cópia | `p_and_expr` |
+| `not_expr → NOT not_expr` | `node = NotExpr(n)`; `deps = n.deps` | constrói AST | `p_not_expr` |
+| `not_expr → cmp_expr` | cópia | cópia | `p_not_expr` |
+| `cmp_expr → operand comparison_op operand` | `node = CompareExpr(op, l, r)`; `deps` = união | constrói AST | `p_cmp_expr` |
+| `cmp_expr → operand` | `node = o`; booleano sozinho (tipo conferido na semântica) | cópia | `p_cmp_expr` |
+| `cmp_expr → ( expr )` | `node = expr.node`; parênteses só mudam a árvore | cópia | `p_cmp_expr` |
+| `cmp_expr → field_operand IN ( literal_list )` / `NOT IN` | `node = InExpr(target, valores, negated)` | constrói AST | `p_cmp_expr` |
+| `cmp_expr → field_operand IS EMPTY` / `IS NOT EMPTY` | `node = EmptyExpr(target, negated)` | constrói AST | `p_cmp_expr` |
+| `operand → field_operand \| literal` | cópia | cópia | `p_operand` |
+| `field_operand → IDENT` / `IDENT . IDENT` | `FieldRefExpr(form|None, campo)`; `deps = {(form, campo)}` (`deps = ∅` nas folhas literais) | constrói AST | `p_field_operand` |
+| `literal → STRING_LIT \| number_lit \| boolean_literal` | `LiteralExpr(val)` | constrói AST | `p_literal` |
+| `literal_list → literal \| literal_list , literal` | lista de `LiteralExpr` | acumula | `p_literal_list` |
+
+Regras semânticas novas (dentro de **R4**, `expressions.checar_condicao`): campo/formulário inexistente, `file` e lista proibidos, valor incompatível (`uuid` precisa ser válido), operador de ordem só em integer/float/date, campo×campo só de tipos compatíveis (integer×float é permitido), operando solto precisa ser boolean, e os **avisos** (campo opcional na condição, condição constante — `deps = ∅` —, valor repetido em `in`, `is empty` em boolean). Em **R6**, a regra dos dominadores percorre todas as referências `Etapa.campo` da expressão.
 
 ## 4. Regras semânticas R1–R7
 
@@ -132,7 +152,7 @@ Há dois tipos de regra:
 | **R1** | `field_decl` (#19) | local | há `default` literal e `!compatível(tipo, default)` → `Valor padrão '…' é incompatível com o tipo '…' do campo '…'.` | linha do campo |
 | **R2** | `field_decl` (#19) → resolvida em `program` | global | `default = Form.campo`: form de origem inexistente → `Referência inter-etapas para formulário inexistente '…'.`; campo inexistente → `Campo '…' não existe na etapa de origem '…'.`; tipos diferentes → `Incompatibilidade de tipos na herança: A.x (t1) -> B.y (t2).` | linha da referência (os dois primeiros) / linha do campo (o terceiro) |
 | **R3** | `form_decl` (#14) | local | `validate` de campo inexistente → `Validação referencia campo inexistente '…'.`; `min`/`max` em tipo fora de integer/float/string → `Regra '…' é incompatível com campo '…' do tipo '…'.`; `pattern` em campo não-string → `Regra pattern aplicada a campo não-string '…'.`; regex inválida → `Expressão regular inválida no pattern: …` | linha do `validate` |
-| **R4** | `transition` (#63) → `program` | global | origem inexistente → `Flow '…' referencia origem inexistente '…'.`; etapa destino inexistente → `Flow '…' referencia etapa inexistente '…'.`; API inexistente → `Flow '…' referencia API inexistente '…'.`; verbo ausente → `API destino '…' não suporta o verbo '…' no flow.`; condição: form/campo inexistente, campo `file` ou lista, valor de tipo incompatível, data inválida, operador de ordem (`<`, `<=`, `>`, `>=`) fora de integer/float/date | linha da transição |
+| **R4** | `transition` (#63) → `program` | global | origem inexistente → `Flow '…' referencia origem inexistente '…'.`; etapa destino inexistente → `Flow '…' referencia etapa inexistente '…'.`; API inexistente → `Flow '…' referencia API inexistente '…'.`; verbo ausente → `API destino '…' não suporta o verbo '…' no flow.`; condição: form/campo inexistente, campo `file` ou lista, valor de tipo incompatível, data/uuid inválido, operador de ordem (`<`, `<=`, `>`, `>=`) fora de integer/float/date, campos de tipos incompatíveis numa comparação, operando solto não booleano (ver 3.1); **avisos** (`Aviso Semântico`) só se não houve erro na condição | linha da transição |
 | **R5** | `endpoint_decl` (#47) → `program` | global | `consumes` não é form nem o flow → `Endpoint '… …' consome formulário ou flow inexistente '…'.`; `{param}` não é campo do form consumido → `Parâmetro de rota '{…}' não declarado no formulário '…'.`; se consome o flow, `{param}` não é campo de nenhuma etapa → `Parâmetro de rota '{…}' não declarado em nenhuma etapa do flow '…'.` | `0` (mantém o comportamento anterior: `lineno` de não-terminal) |
 | **R6** | `flow_decl` (#60) → `program` | global | nome do flow igual ao de um form (sem diferenciar maiúsculas) → erro; depois resolve os R4 das transições, na ordem. Se não houve erro e o flow não é de uma linha só, analisa o grafo (`flow_graph.FlowGraph`): etapa sem saída; transição depois do caminho padrão (nunca usada); etapa só com transições `when`; ciclo; etapa inalcançável a partir da inicial; campo repetido entre etapas; herança `default = Etapa.campo` ou condição `Etapa.campo` de etapa que não vem antes em **todos** os caminhos (dominadores); envio depois de várias etapas para endpoint que não consome o flow | linha da transição (ou do campo); ciclo e nome na linha do flow |
 | **R7** | `program` (#1) | raiz | monta `symtab` e resolve as pendências de R2, R4, R5 e R6 na ordem: forms (campos, depois `validate`) → apis → flow | — |
@@ -199,3 +219,4 @@ program resolve: "Nope" ∉ symtab.forms ∪ symtab.flows → Erro(0, ...)
 - Endpoint sem `consumes` não é verificado; um flow de uma linha só (`Form -> Api.VERBO;`) confere só o verbo, não se o endpoint consome a origem, e não passa pela análise de grafo de R6 (um form dele pode herdar de outro form, como antes).
 - O tema não tem nenhuma checagem semântica; nomes iguais em tipos diferentes (um `form` e uma `api`, por exemplo) são aceitos. A exceção nova é o `flow`, que não pode ter o nome de um `form`, porque os dois podem aparecer em `consumes`.
 - Os erros de endpoint saem com `Linha 0`.
+- A árvore de derivação do `teste.fad` não mudou com as expressões: ele só usa `condition_opt → empty`, e `tests/golden/teste_reducoes.txt` (sequência de reduções) é conferida por `tests/test_expressions.py`.

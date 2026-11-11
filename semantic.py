@@ -49,6 +49,7 @@ from typing import Any, List, Optional
 
 from symbol_table import ProgramNode, SymbolTable, FieldRefNode
 from flow_graph import FlowGraph
+from expressions import Escopo, checar_condicao, referencias
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +64,14 @@ class Erro:
 
     def __str__(self) -> str:
         return f"Erro Semântico [Linha {self.lineno}]: {self.msg}"
+
+
+@dataclass
+class Aviso(Erro):
+    """MODIFICADO (avisos): diagnóstico que NÃO impede a compilação."""
+
+    def __str__(self) -> str:
+        return f"Aviso Semântico [Linha {self.lineno}]: {self.msg}"
 
 
 class Verificacao:
@@ -196,28 +205,6 @@ def regra_form(form) -> List[Verificacao]:
 # R4 — transition (GLOBAL): `Origem -> Destino [when cond];`
 # ---------------------------------------------------------------------------
 
-_ORDERED_TYPES = ('integer', 'float', 'date')
-_EQUALITY_OPS = ('==', '!=')
-
-
-def _condition_value_ok(field_type: str, val: Any) -> bool:
-    if field_type in ('string', 'uuid', 'date'):
-        return isinstance(val, str)
-    if field_type == 'integer':
-        return isinstance(val, int) and not isinstance(val, bool)
-    if field_type == 'float':
-        return isinstance(val, (int, float)) and not isinstance(val, bool)
-    if field_type == 'boolean':
-        return isinstance(val, bool)
-    return False
-
-
-def _show(val: Any) -> str:
-    if isinstance(val, bool):
-        return 'true' if val else 'false'
-    return str(val)
-
-
 @dataclass
 class TransitionCheck(Verificacao):
     transition: Any
@@ -243,33 +230,14 @@ class TransitionCheck(Verificacao):
         return erros
 
     def _resolver_condicao(self, st: SymbolTable) -> List[Erro]:
+        """
+        MODIFICADO (expressões nas condições): a checagem de tipos da expressão
+        está em expressions.py (atributo `tipo`, resolvido aqui por precisar da
+        tabela de símbolos). Erros primeiro; avisos só se não houve erro.
+        """
         t = self.transition
-        c = t.condition
-        form_name = c.form_name or t.source_form
-        if form_name not in st.forms:
-            if c.form_name is None:
-                return []          # origem inexistente já foi informada
-            return [Erro(c.lineno, f"Condição do flow '{self.flow_name}' referencia formulário inexistente '{form_name}'.")]
-        form = st.forms[form_name]
-        if c.field_name not in form.fields:
-            return [Erro(c.lineno, f"Condição do flow '{self.flow_name}' referencia campo inexistente '{c.field_name}' na etapa '{form_name}'.")]
-        campo = form.fields[c.field_name]
-        f_type = campo.field_type
-        if f_type == 'file':
-            return [Erro(c.lineno, f"Campo '{c.field_name}' do tipo 'file' não pode ser usado em condição.")]
-        if campo.is_array:
-            return [Erro(c.lineno, f"Campo '{c.field_name}' é uma lista e não pode ser usado em condição.")]
-        erros: List[Erro] = []
-        if not _condition_value_ok(f_type, c.value):
-            erros.append(Erro(c.lineno, f"Valor '{_show(c.value)}' é incompatível com o tipo '{f_type}' do campo '{c.field_name}' na condição."))
-        elif f_type == 'date':
-            try:
-                datetime.date.fromisoformat(c.value)
-            except ValueError:
-                erros.append(Erro(c.lineno, f"Valor '{c.value}' não é uma data válida (use AAAA-MM-DD) na condição."))
-        if c.operator not in _EQUALITY_OPS and f_type not in _ORDERED_TYPES:
-            erros.append(Erro(c.lineno, f"Operador '{c.operator}' não pode ser usado com o campo '{c.field_name}' do tipo '{f_type}'."))
-        return erros
+        erros, avisos = checar_condicao(t.condition, Escopo(self.flow_name, t.source_form), st.forms)
+        return [Erro(l, m) for l, m in erros] + [Aviso(l, m) for l, m in avisos]
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +308,7 @@ class FlowCheck(Verificacao):
             for c in t.checks:
                 transicoes.extend(c.resolver(st))
         erros.extend(transicoes)
-        if transicoes:
+        if any(not isinstance(e, Aviso) for e in transicoes):
             # Com etapas ou APIs inexistentes, a análise do grafo só geraria ruído.
             return erros
         if FlowGraph(flow).is_simple():
@@ -414,14 +382,22 @@ class FlowCheck(Verificacao):
                         f"A etapa '{step}' tenta herdar o valor de '{ref.form_name}', mas '{ref.form_name}' não vem antes dela em todos os caminhos do flow '{flow.name}'."
                     ))
         for t in flow.transitions:
-            c = t.condition
-            if c is None or c.form_name is None or c.form_name == t.source_form:
+            if t.condition is None or t.source_form not in dom:
                 continue
-            if t.source_form in dom and c.form_name not in dom[t.source_form]:
-                erros.append(Erro(
-                    c.lineno,
-                    f"A condição da transição de '{t.source_form}' usa '{c.form_name}.{c.field_name}', mas '{c.form_name}' não vem antes de '{t.source_form}' em todos os caminhos do flow '{flow.name}'."
-                ))
+            # MODIFICADO (expressões): vale para TODA referência `Etapa.campo`
+            # da expressão, em qualquer ponto (and/or/not/in...).
+            vistos = set()
+            for ref in referencias(t.condition):
+                if ref.form_name is None or ref.form_name == t.source_form:
+                    continue
+                if (ref.form_name, ref.field_name) in vistos:
+                    continue
+                vistos.add((ref.form_name, ref.field_name))
+                if ref.form_name not in dom[t.source_form]:
+                    erros.append(Erro(
+                        ref.lineno,
+                        f"A condição da transição de '{t.source_form}' usa '{ref.form_name}.{ref.field_name}', mas '{ref.form_name}' não vem antes de '{t.source_form}' em todos os caminhos do flow '{flow.name}'."
+                    ))
 
         # Envio depois de várias etapas: a API precisa receber o flow inteiro.
         for t in g.submits():
@@ -491,9 +467,11 @@ class SemanticAnalyzer:
     def __init__(self):
         self.symbol_table = SymbolTable()
         self.errors: List[str] = []
+        self.warnings: List[str] = []
 
     def analyze(self, ast: ProgramNode) -> bool:
         if ast.symtab is not None:
             self.symbol_table = ast.symtab
         self.errors = [str(e) for e in ast.errors]
+        self.warnings = [str(w) for w in ast.warnings]
         return len(self.errors) == 0

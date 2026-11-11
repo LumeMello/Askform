@@ -165,24 +165,3 @@ class FlowGraph:
             stack.extend(p for p in self.predecessors.get(node, []) if p in reach)
         seen.discard(step)
         return seen
-
-    def mandatory_steps(self, api: str, verb: str) -> Set[str]:
-        """
-        Etapas que sempre são preenchidas antes de enviar para `api.verb`.
-        Se nenhuma transição envia para esse endpoint, considera todos os envios
-        do flow. Só os campos dessas etapas podem ser obrigatórios no backend.
-        """
-        reach = self.reachable()
-        dom = self.dominators()
-        sends = [
-            t for t in self.submits()
-            if t.source_form in reach
-            and t.target_api == api and t.target_verb == verb
-        ]
-        if not sends:
-            sends = [t for t in self.submits() if t.source_form in reach]
-        result: Optional[Set[str]] = None
-        for t in sends:
-            before = dom.get(t.source_form, set()) | {t.source_form}
-            result = before if result is None else result & before
-        return result or set()
