@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Tuple
 
 from flow_graph import FlowGraph
 from symbol_table import ProgramNode, FormNode, FieldRefNode
+from expressions import Escopo, para_json
 
 
 class CodeWriter:
@@ -403,6 +404,45 @@ _FLOW_CSS = (
     ".actions button.secondary { background: transparent; color: inherit; border: 1px solid #cbd5e1; }",
 )
 
+# MODIFICADO (expressões): avaliador PURO das condições (sem DOM), com a mesma
+# semântica de expressions.avaliar_json. `get(etapa, campo, tipo)` devolve o
+# valor ou null (vazio). Fica em constante própria para ser testado sem página.
+_EVAL_JS = r"""
+function evalExpr(n, get) {
+  function val(op) { return op.k === 'lit' ? op.v : get(op.step, op.name, op.type); }
+  switch (n.k) {
+    case 'or': return evalExpr(n.l, get) || evalExpr(n.r, get);
+    case 'and': return evalExpr(n.l, get) && evalExpr(n.r, get);
+    case 'not': return !evalExpr(n.e, get);
+    case 'lit': return n.v === true;
+    case 'field': return get(n.step, n.name, n.type) === true;
+    case 'cmp': {
+      const a = val(n.l), b = val(n.r);
+      if (a === null || b === null) return false;
+      switch (n.op) {
+        case '==': return a === b;
+        case '!=': return a !== b;
+        case '<': return a < b;
+        case '<=': return a <= b;
+        case '>': return a > b;
+        default: return a >= b;
+      }
+    }
+    case 'in': {
+      const v = val(n.f);
+      if (v === null) return false;
+      const found = n.v.includes(v);
+      return n.neg ? !found : found;
+    }
+    case 'empty': {
+      const empty = val(n.f) === null;
+      return n.neg ? !empty : empty;
+    }
+    default: throw new Error('nó de expressão desconhecido: ' + n.k);
+  }
+}
+"""
+
 # Script da página multi-etapas. `flow` é injetado antes deste trecho.
 _FLOW_SCRIPT = r"""
 const outputDiv = document.getElementById('responseOutput');
@@ -422,27 +462,23 @@ function fieldOf(step, fieldName) {
   return form ? form.elements.namedItem(fieldName) : null;
 }
 
+// Leitura do valor de um campo no DOM: null = vazio; boolean nunca é vazio.
+function domValue(step, name, type) {
+  const element = fieldOf(step, name);
+  if (!element) return null;
+  if (type === 'boolean') return element.checked;
+  if (element.value === '') return null;
+  if (type === 'integer' || type === 'float') {
+    const number = Number(element.value);
+    return Number.isNaN(number) ? null : number;
+  }
+  if (type === 'uuid') return element.value.trim().toLowerCase();
+  return element.value;
+}
+
 function matches(condition) {
   if (!condition) return true;
-  const element = fieldOf(condition.step, condition.field);
-  if (!element) return false;
-  let actual;
-  if (condition.type === 'boolean') {
-    actual = element.checked;
-  } else {
-    if (element.value === '') return false;
-    actual = (condition.type === 'integer' || condition.type === 'float') ? Number(element.value) : element.value;
-  }
-  const expected = condition.value;
-  switch (condition.op) {
-    case '==': return actual === expected;
-    case '!=': return actual !== expected;
-    case '<': return actual < expected;
-    case '<=': return actual <= expected;
-    case '>': return actual > expected;
-    case '>=': return actual >= expected;
-    default: return false;
-  }
+  return evalExpr(condition, domValue);
 }
 
 function applyInheritance(step) {
@@ -593,16 +629,9 @@ def _render_flow_html(ast: ProgramNode) -> str:
         transitions = []
         for t in graph.outgoing.get(step, []):
             item: Dict[str, Any] = {"when": None}
-            c = t.condition
-            if c is not None:
-                cond_step = c.form_name or t.source_form
-                item["when"] = {
-                    "step": cond_step,
-                    "field": c.field_name,
-                    "type": _field_type(ast.forms[cond_step].fields[c.field_name]),
-                    "op": c.operator,
-                    "value": c.value,
-                }
+            if t.condition is not None:
+                # MODIFICADO (expressões): árvore da expressão (and/or/not/in...).
+                item["when"] = para_json(t.condition, Escopo(flow.name, t.source_form), ast.forms)
             if t.target_form is not None:
                 item["goto"] = t.target_form
             else:
@@ -659,7 +688,7 @@ def _render_flow_html(ast: ProgramNode) -> str:
     w.write_line("'use strict';")
     config_json = json.dumps(config, ensure_ascii=False).replace("</", "<\\/")
     w.write_line(f"const flow = {config_json};")
-    for line in _FLOW_SCRIPT.strip("\n").split("\n"):
+    for line in (_EVAL_JS.strip("\n") + "\n" + _FLOW_SCRIPT.strip("\n")).split("\n"):
         w.write_line(line)
     w.dedent()
     w.write_line("</script>")

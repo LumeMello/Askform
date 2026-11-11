@@ -26,10 +26,12 @@ opcionais.
 """
 from __future__ import annotations
 
+import inspect
 import os
 import re
 from typing import Any, Dict, List
 
+from expressions import Escopo, avaliar_json, para_json
 from flow_graph import FlowGraph
 from symbol_table import ProgramNode, FieldRefNode
 
@@ -101,14 +103,112 @@ def _field_config(form: Any, optional: bool = False) -> Dict[str, Dict[str, Any]
     return result
 
 
-def _flow_field_config(ast: ProgramNode, method: str, api_name: str) -> Dict[str, Dict[str, Any]]:
-    """Campos de todas as etapas do flow, para um endpoint que consome o flow."""
+_FLOW_HELPERS = """
+def _flow_values(config, payload):
+    \"\"\"Valor tipado de cada campo (None = vazio); boolean ausente vale False.\"\"\"
+    values = {}
+    for name, spec in config['fields'].items():
+        raw = payload.get(name)
+        field_type = spec['type']
+        if field_type == 'boolean':
+            try:
+                values[name] = False if raw in (None, '') else bool(_parse_bool(raw))
+            except ValueError:
+                values[name] = False
+            continue
+        if raw is None or raw == '' or field_type == 'file':
+            values[name] = None
+            continue
+        try:
+            values[name] = _convert_scalar(raw, field_type)
+        except (ValueError, TypeError):
+            values[name] = None
+    return values
+
+
+def _walk_flow(flow, values):
+    \"\"\"Recalcula o caminho: a primeira transição cuja condição vale decide.\"\"\"
+    step = flow['start']
+    visited = []
+    lookup = lambda _step, name: values.get(name)
+    while True:
+        visited.append(step)
+        if len(visited) > len(flow['steps']):
+            raise ValueError('Caminho do flow inválido')
+        chosen = None
+        for transition in flow['steps'][step]['transitions']:
+            if transition['when'] is None or avaliar_json(transition['when'], lookup):
+                chosen = transition
+                break
+        if chosen is None:
+            raise ValueError(f"Nenhum caminho disponível a partir da etapa '{step}' com os dados informados")
+        if chosen['submit'] is not None:
+            return visited, chosen['submit']
+        step = chosen['goto']
+
+
+def _effective_fields(config, payload, partial):
+    \"\"\"Campos que valem para esta requisição: só os das etapas do caminho percorrido.\"\"\"
+    flow = config.get('flow')
+    if not flow or partial:
+        return config['fields']
+    visited, submit = _walk_flow(flow, _flow_values(config, payload))
+    if (submit['api'], submit['verb']) != (config['api'], config['method']):
+        raise ValueError('Os dados informados levam a outro destino do flow')
+    allowed = set()
+    for step in visited:
+        allowed.update(flow['steps'][step]['fields'])
+    outside = sorted(name for name in payload if name in config['fields'] and name not in allowed)
+    if outside:
+        raise ValueError('Campo fora do caminho percorrido: ' + ', '.join(outside))
+    return {name: spec for name, spec in config['fields'].items() if name in allowed}
+"""
+
+
+def _write_flow_helpers(w: "CodeWriter") -> None:
+    """Avaliador de condições (o mesmo código do compilador) e recálculo do caminho."""
+    w.write_line(inspect.getsource(avaliar_json).rstrip("\n"))
+    w.write_line()
+    w.write_line()
+    for line in _FLOW_HELPERS.strip("\n").split("\n"):
+        w.write_line(line)
+    w.write_line()
+
+
+def _flow_field_config(ast: ProgramNode) -> Dict[str, Dict[str, Any]]:
+    """
+    Campos de todas as etapas do flow, para um endpoint que consome o flow.
+
+    MODIFICADO (caminho no servidor): `required` é o do .fad. O servidor
+    recalcula o caminho percorrido (`_walk_flow`) e só exige/aceita os campos
+    das etapas desse caminho; antes, só as etapas presentes em todos os
+    caminhos podiam ser obrigatórias.
+    """
     graph = FlowGraph(ast.flow)
-    mandatory = graph.mandatory_steps(api_name, method)
     result: Dict[str, Dict[str, Any]] = {}
     for step in graph.steps:
-        result.update(_field_config(ast.forms[step], optional=step not in mandatory))
+        result.update(_field_config(ast.forms[step]))
     return result
+
+
+def _flow_runtime_config(ast: ProgramNode) -> Dict[str, Any]:
+    """Grafo do flow serializável: etapa inicial, campos e transições de cada etapa."""
+    flow = ast.flow
+    graph = FlowGraph(flow)
+    steps: Dict[str, Any] = {}
+    for step in graph.steps:
+        transitions = []
+        for t in graph.outgoing.get(step, []):
+            item: Dict[str, Any] = {"when": None, "goto": None, "submit": None}
+            if t.condition is not None:
+                item["when"] = para_json(t.condition, Escopo(flow.name, t.source_form), ast.forms)
+            if t.target_form is not None:
+                item["goto"] = t.target_form
+            else:
+                item["submit"] = {"api": t.target_api, "verb": str(t.target_verb).upper()}
+            transitions.append(item)
+        steps[step] = {"fields": list(ast.forms[step].fields), "transitions": transitions}
+    return {"start": graph.start, "steps": steps}
 
 
 def _render_flask_app(ast: ProgramNode) -> str:
@@ -155,7 +255,7 @@ def _render_flask_app(ast: ProgramNode) -> str:
             if form is not None:
                 fields = _field_config(form)
             else:
-                fields = _flow_field_config(ast, method, api_name)
+                fields = _flow_field_config(ast)
 
             for param_name in route_params:
                 if param_name not in fields:
@@ -165,12 +265,18 @@ def _render_flask_app(ast: ProgramNode) -> str:
                     )
 
             config_id = len(endpoint_configs)
-            endpoint_configs.append({
+            config = {
                 "table": table_name,
                 "form": form_name,
                 "fields": fields,
                 "route_params": route_params,
-            })
+            }
+            if form is None:
+                # MODIFICADO (caminho no servidor): grafo do flow + destino deste endpoint.
+                config["flow"] = _flow_runtime_config(ast)
+                config["api"] = api_name
+                config["method"] = method
+            endpoint_configs.append(config)
             routes.append({
                 "route": flask_route,
                 "method": method,
@@ -399,9 +505,16 @@ def _render_flask_app(ast: ProgramNode) -> str:
     w.dedent()
     w.write_line()
 
+    has_flow = any("flow" in config for config in endpoint_configs)
+    if has_flow:
+        _write_flow_helpers(w)
+
     w.write_line("def _prepare_data(config, payload, partial=False):")
     w.indent()
-    w.write_line("fields = config['fields']")
+    if has_flow:
+        w.write_line("fields = _effective_fields(config, payload, partial)")
+    else:
+        w.write_line("fields = config['fields']")
     w.write_line("unknown = set(payload) - set(fields)")
     w.write_line("if unknown: raise ValueError('Campos não reconhecidos: ' + ', '.join(sorted(unknown)))")
     w.write_line("prepared = {}")

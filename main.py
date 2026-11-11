@@ -43,6 +43,12 @@ def compile_dsl(source_code: str):
     analyzer = SemanticAnalyzer()
     is_valid = analyzer.analyze(ast)
 
+    # MODIFICADO (avisos): informados sempre; não impedem a compilação.
+    if analyzer.warnings:
+        print(f"{len(analyzer.warnings)} aviso(s) semântico(s):")
+        for warning in analyzer.warnings:
+            print(f"  - {warning}")
+
     if not is_valid:
         print(f"Compilation Failed with {len(analyzer.errors)} semantic error(s):")
         for err in analyzer.errors:

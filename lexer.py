@@ -29,6 +29,13 @@ reserved = {
     "api": "API",
     "flow": "FLOW",
     "when": "WHEN",
+    # MODIFICADO (expressões nas condições): operadores lógicos e predicados.
+    "and": "AND",
+    "or": "OR",
+    "not": "NOT",
+    "in": "IN",
+    "is": "IS",
+    "empty": "EMPTY",
     "validate": "VALIDATE",
     "theme": "THEME",
     "string": "TYPE_STRING",
@@ -69,6 +76,8 @@ tokens = list(dict.fromkeys([
     "RBRACE",
     "LBRACKET",
     "RBRACKET",
+    "LPAREN",
+    "RPAREN",
     "COLON",
     "SEMICOLON",
     "COMMA",
@@ -89,6 +98,9 @@ t_RBRACKET = r"\]"
 t_COLON = r":"
 t_SEMICOLON = r";"
 t_COMMA = r","
+# MODIFICADO (expressões nas condições): parênteses.
+t_LPAREN = r"\("
+t_RPAREN = r"\)"
 t_DOT = r"\."
 t_EQUALS = r"="
 t_ARROW = r"->"

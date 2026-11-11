@@ -145,7 +145,7 @@ flow CadastroClienteFlow {
 }
 ```
 
-**Caminhos (desvios condicionais):** use `when campo OPERADOR valor` para escolher a próxima etapa. As transições de uma etapa são testadas na ordem em que aparecem; a primeira que casar decide o caminho. A transição sem `when` é o caminho padrão e deve ser a última.
+**Caminhos (desvios condicionais):** use `when <condição>` para escolher a próxima etapa. As transições de uma etapa são testadas na ordem em que aparecem; a primeira que casar decide o caminho. A transição sem `when` é o caminho padrão e deve ser a última.
 
 ```dsl
 flow CadastroFlow {
@@ -164,13 +164,18 @@ flow CadastroFlow {
 }
 ```
 
-* **Operadores:** `==`, `!=` (todos os tipos) e `<`, `<=`, `>`, `>=` (`integer`, `float` e `date`).
+* **Comparações:** `==`, `!=` (todos os tipos) e `<`, `<=`, `>`, `>=` (`integer`, `float` e `date`). Os dois lados podem ser campo ou literal (`idade >= 18`, `18 <= idade`, `idade >= idadeMinima`); campos de tipos incompatíveis não se comparam.
+* **Lógica:** `and`, `or`, `not` e parênteses. Precedência, da mais forte para a mais fraca: comparação, `not`, `and`, `or`; `and` e `or` associam à esquerda. Exemplo: `when idade >= 18 and (uf in ("SP", "RJ") or not possuiDocumento)`.
+* **Booleano sozinho:** um campo `boolean` (ou `true`/`false`) já é uma condição: `when possuiDocumento and not menor`.
+* **Lista e vazio:** `campo in ("a", "b")`, `campo not in (...)`, `campo is empty`, `campo is not empty`. As palavras `and or not in is empty` agora são reservadas e não servem como nome de campo.
 * **Campo da condição:** `campo` (da própria etapa de origem) ou `Etapa.campo` (de uma etapa que vem antes em todos os caminhos). Campos `file` e listas (`tipo[]`) não podem ser usados.
-* **Valor:** literal do mesmo tipo do campo (`"texto"`, `10`, `1.5`, `true`/`false`; datas como `"2024-01-31"`). Campo vazio nunca satisfaz a condição.
+* **Valor:** literal do mesmo tipo do campo (`"texto"`, `10`, `1.5`, `true`/`false`; datas como `"2024-01-31"`; `uuid` precisa ser um UUID válido).
+* **Campo vazio:** a lógica é de dois valores. Comparação, `in` e `not in` com campo vazio dão falso; `not` apenas inverte; `boolean` ausente vale falso. Para tratar o vazio use `is empty`.
+* **Avisos** (não impedem a compilação nem mudam o código de saída): campo opcional usado na condição (sem `is empty` na mesma condição), condição sempre verdadeira ou falsa, valor repetido em `in (...)`, `is empty` em campo booleano.
 * **Envio:** o envio para a API (`Etapa -> Api.VERBO`) pode acontecer em qualquer etapa e mandar para APIs diferentes em cada caminho. Só os dados das etapas do caminho percorrido são enviados. Depois de mais de uma etapa, o endpoint precisa ter `consumes = NomeDoFlow`.
-* **Backend:** o endpoint que consome o flow grava os campos de todas as etapas na mesma tabela. Campos `required` só são exigidos se a etapa aparece em todos os caminhos até aquele envio.
+* **Backend:** o endpoint que consome o flow grava os campos de todas as etapas na mesma tabela. O servidor **recalcula o caminho** a partir dos dados recebidos: campos de etapas fora do caminho dão erro 400, `required` só vale para as etapas percorridas, e o destino do caminho precisa ser o endpoint chamado. O `PATCH` continua parcial e não recalcula o caminho.
 
-**Regras verificadas pelo compilador:** etapas e APIs existentes; verbo suportado pela API; tipos e operadores das condições; toda etapa com saída e com um caminho padrão (sem `when`), que deve ser o último; nenhuma transição inalcançável depois do caminho padrão; nenhum ciclo; todas as etapas alcançáveis a partir da inicial; nomes de campo únicos entre as etapas; herança (`default = Etapa.campo`) e condições `Etapa.campo` só de etapas que vêm antes em todos os caminhos; e o nome do flow diferente do nome de qualquer formulário.
+**Regras verificadas pelo compilador:** etapas e APIs existentes; verbo suportado pela API; tipos e operadores das condições (inclusive entre campos); toda etapa com saída e com um caminho padrão (sem `when`), que deve ser o último; nenhuma transição inalcançável depois do caminho padrão; nenhum ciclo; todas as etapas alcançáveis a partir da inicial; nomes de campo únicos entre as etapas; herança (`default = Etapa.campo`) e condições `Etapa.campo` só de etapas que vêm antes em todos os caminhos; e o nome do flow diferente do nome de qualquer formulário.
 
 **Saída gerada:** um flow de uma linha gera a página do formulário (`dist/<form>.html`), como antes. Um flow com várias etapas ou com `when` gera uma única página `dist/<flow>.html` com botões **Voltar** e **Próximo** (o último vira **Enviar dados**).
 
@@ -267,10 +272,12 @@ python tests/test_flow.py
 ```
 
 ```bash
+python tests/test_expressions.py
+python tests/test_compat_preE.py
 python oracle/test_oracle.py
 ```
 
-O primeiro cobre o flow multi-etapas; o segundo compara o compilador com a versão anterior em programas que não usam os recursos novos.
+O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
 
 ---
 

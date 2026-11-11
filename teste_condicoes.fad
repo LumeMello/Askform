@@ -1,0 +1,95 @@
+// Condições compostas nas transições do flow: and, or, not, parênteses,
+// comparação entre campos, `in (...)` e `is empty`.
+// Precedência: comparação > not > and > or.
+theme Condicoes {
+  background = "#f8fafc";
+  accent_color = "#7c3aed";
+  border_radius = "10px";
+}
+
+form InicioStep {
+  tipo: string {
+    label = "Tipo de cliente (PF ou PJ)";
+    required = true;
+  };
+  porte: string {
+    label = "Porte da empresa (MEI, ME, EPP...)";
+  };
+  idade: integer {
+    label = "Idade";
+    required = true;
+  };
+  idadeMinima: integer {
+    label = "Idade mínima exigida";
+    required = true;
+  };
+  uf: string {
+    label = "UF";
+    required = true;
+  };
+  cupom: string {
+    label = "Cupom (opcional)";
+  };
+  possuiDocumento: boolean {
+    label = "Possui documento com foto?";
+  };
+}
+
+form JuridicaStep {
+  cnpj: string {
+    label = "CNPJ";
+    required = true;
+  };
+}
+
+form MenorStep {
+  responsavel: string {
+    label = "Nome do responsável legal";
+    required = true;
+  };
+}
+
+form CapitalStep {
+  regiao: string {
+    label = "Região de atendimento";
+    required = true;
+  };
+}
+
+form FisicaStep {
+  cpf: string {
+    label = "CPF";
+    required = true;
+  };
+}
+
+form ContatoStep {
+  email: string {
+    label = "E-mail";
+    required = true;
+  };
+}
+
+api ClienteApi {
+  POST "/api/v1/clientes" {
+    consumes = CondicoesFlow;
+    produces = uuid;
+  }
+}
+
+flow CondicoesFlow {
+  // As transições de cada etapa são testadas na ordem; a primeira verdadeira
+  // vence, e a transição sem `when` é o caminho padrão (por último).
+  InicioStep -> JuridicaStep when tipo == "PJ" and (porte is empty or porte != "MEI");
+  InicioStep -> MenorStep    when not (idade >= idadeMinima) or not possuiDocumento;
+  InicioStep -> CapitalStep  when uf in ("SP", "RJ") and cupom is not empty;
+  InicioStep -> FisicaStep   when cupom == "VIP";
+  InicioStep -> FisicaStep;
+
+  JuridicaStep -> ContatoStep;
+  MenorStep    -> ContatoStep;
+  CapitalStep  -> ContatoStep;
+  FisicaStep   -> ContatoStep;
+
+  ContatoStep -> ClienteApi.POST;
+}

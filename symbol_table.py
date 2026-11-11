@@ -17,7 +17,7 @@
 Symbol Table and Abstract Syntax Tree (AST) node definitions with Theme and Flow support.
 """
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, FrozenSet, List, Optional, Tuple
 
 @dataclass
 class ASTNode:
@@ -73,13 +73,52 @@ class ApiNode(ASTNode):
     # MODIFICADO (SDD): atributo sintetizado `checks` (concatena os dos endpoints).
     checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
+# MODIFICADO (expressões nas condições): `ConditionNode` (uma comparação) foi
+# substituído por uma árvore de expressão. `deps` é um atributo SINTETIZADO
+# local: conjunto de (etapa|None, campo) usados na subárvore.
 @dataclass
-class ConditionNode(ASTNode):
-    """Condição `when campo OP valor` (ou `when Form.campo OP valor`)."""
-    form_name: Optional[str] = None   # None = campo da própria etapa de origem
+class ExprNode(ASTNode):
+    """Raiz das expressões de `when`."""
+    deps: FrozenSet[Tuple[Optional[str], str]] = field(default_factory=frozenset, compare=False)
+
+@dataclass
+class FieldRefExpr(ExprNode):
+    """`campo` (etapa de origem) ou `Etapa.campo`."""
+    form_name: Optional[str] = None
     field_name: str = ""
-    operator: str = ""                # ==, !=, <, <=, >, >=
+
+@dataclass
+class LiteralExpr(ExprNode):
     value: Any = None
+
+@dataclass
+class CompareExpr(ExprNode):
+    op: str = ""                      # ==, !=, <, <=, >, >=
+    left: Optional[ExprNode] = None
+    right: Optional[ExprNode] = None
+
+@dataclass
+class InExpr(ExprNode):
+    """`campo in (v1, v2)` / `campo not in (...)`."""
+    target: Optional[FieldRefExpr] = None   # (nome `field` colidiria com dataclasses.field)
+    values: List[LiteralExpr] = field(default_factory=list)
+    negated: bool = False
+
+@dataclass
+class EmptyExpr(ExprNode):
+    """`campo is empty` / `campo is not empty`."""
+    target: Optional[FieldRefExpr] = None
+    negated: bool = False
+
+@dataclass
+class NotExpr(ExprNode):
+    operand: Optional[ExprNode] = None
+
+@dataclass
+class LogicExpr(ExprNode):
+    op: str = ""                      # 'and' | 'or'
+    left: Optional[ExprNode] = None
+    right: Optional[ExprNode] = None
 
 @dataclass
 class TransitionNode(ASTNode):
@@ -92,7 +131,7 @@ class TransitionNode(ASTNode):
     target_form: Optional[str] = None
     target_api: Optional[str] = None
     target_verb: Optional[str] = None
-    condition: Optional[ConditionNode] = None
+    condition: Optional[ExprNode] = None
     # Atributo sintetizado `checks` (regra R4).
     checks: List[Any] = field(default_factory=list, repr=False, compare=False)
 
@@ -118,6 +157,8 @@ class ProgramNode(ASTNode):
     # tabela de símbolos e lista final de erros semânticos.
     symtab: Any = field(default=None, repr=False, compare=False)
     errors: List[Any] = field(default_factory=list, repr=False, compare=False)
+    # MODIFICADO (avisos): diagnósticos que não impedem a compilação.
+    warnings: List[Any] = field(default_factory=list, repr=False, compare=False)
 
 class SymbolTable:
     def __init__(self):
