@@ -21,8 +21,8 @@ sobrescritas silenciosas. Mantém a interface pública build_parser().
 """
 import ply.yacc as yacc
 
-from lexer import tokens
-from symbol_table import (
+from lexer_old import tokens
+from symbol_table_old import (
     ProgramNode,
     ThemeNode,
     FormNode,

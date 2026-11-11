@@ -28,20 +28,21 @@ from symbol_table import (
     FormNode,
     FormFieldNode,
     ValidationBlockNode,
-    WizardNode,
     FieldRefNode,
     ApiNode,
     EndpointNode,
     FlowNode,
+    TransitionNode,
+    ConditionNode,
 )
 # MODIFICADO (SDD): as regras semânticas (R1..R7) ficam em semantic.py e são
 # chamadas pelas ações das produções abaixo; ver tabela.md.
 from semantic import (
     regra_default,
     regra_form,
-    WizardCheck,
+    TransitionCheck,
     EndpointCheck,
-    FlowCheck,
+    regra_flow,
     construir_tabela_simbolos,
     resolver_programa,
 )
@@ -68,8 +69,6 @@ def p_program(p):
     for decl in p[2]:
         if isinstance(decl, FormNode):
             _insert_unique(program_node.forms, decl.name, decl, "Formulário", decl.lineno)
-        elif isinstance(decl, WizardNode):
-            _insert_unique(program_node.wizards, decl.name, decl, "Wizard", decl.lineno)
         elif isinstance(decl, ApiNode):
             _insert_unique(program_node.apis, decl.name, decl, "API", decl.lineno)
 
@@ -99,7 +98,6 @@ def p_body_declarations(p):
 
 def p_body_declaration(p):
     """body_declaration : form_decl
-                        | wizard_decl
                         | api_decl"""
     p[0] = p[1]
 
@@ -272,59 +270,6 @@ def p_validation_rule(p):
 
 
 # ---------------------------------------------------------------------------
-# Wizards
-# ---------------------------------------------------------------------------
-
-def p_wizard_decl(p):
-    "wizard_decl : WIZARD IDENTIFIER LBRACE wizard_elements RBRACE"
-    props = p[4]
-    node = WizardNode(
-        lineno=p.lineno(1),
-        name=p[2],
-        steps=props.get("steps", []),
-        target_api=props.get("target_api"),
-        target_verb=props.get("target_verb"),
-    )
-    # MODIFICADO (SDD) — regra R4 (global): etapas, herança em ordem e API
-    # dependem de outros blocos; vira pendência resolvida em `program`.
-    node.checks = [WizardCheck(node)]
-    p[0] = node
-
-
-def p_wizard_elements(p):
-    """wizard_elements : wizard_elements wizard_element
-                       | empty"""
-    if len(p) == 3:
-        props = dict(p[1])
-        _merge_unique(props, p[2], "Propriedade de wizard", p.lineno(2))
-        p[0] = props
-    else:
-        p[0] = {}
-
-
-def p_wizard_element(p):
-    """wizard_element : STEPS EQUALS LBRACKET step_list RBRACKET SEMICOLON
-                      | SUBMIT EQUALS IDENTIFIER DOT http_verb SEMICOLON"""
-    if p.slice[1].type == "STEPS":
-        p[0] = {"steps": p[4]}
-    else:
-        p[0] = {"target_api": p[3], "target_verb": p[5]}
-
-
-def p_step_list(p):
-    """step_list : step_list COMMA IDENTIFIER
-                 | IDENTIFIER"""
-    if len(p) == 4:
-        if p[3] in p[1]:
-            raise SyntaxError(
-                f"Etapa duplicada no wizard na linha {p.lineno(3)}: {p[3]!r}"
-            )
-        p[0] = p[1] + [p[3]]
-    else:
-        p[0] = [p[1]]
-
-
-# ---------------------------------------------------------------------------
 # APIs e endpoints
 # ---------------------------------------------------------------------------
 
@@ -422,17 +367,85 @@ def p_header_list(p):
 # ---------------------------------------------------------------------------
 
 def p_flow_decl(p):
-    "flow_decl : FLOW IDENTIFIER LBRACE IDENTIFIER ARROW IDENTIFIER DOT http_verb SEMICOLON RBRACE"
-    node = FlowNode(
-        lineno=p.lineno(1),
-        name=p[2],
-        source_form=p[4],
-        target_api=p[6],
-        target_verb=p[8],
-    )
-    # MODIFICADO (SDD) — regra R6 (global): origem, API e verbo do flow.
-    node.checks = [FlowCheck(node)]
+    "flow_decl : FLOW IDENTIFIER LBRACE transition_list RBRACE"
+    node = FlowNode(lineno=p.lineno(1), name=p[2], transitions=p[4])
+    # MODIFICADO — regra R6 (global): navegação entre etapas (caminhos,
+    # ciclos, herança em ordem, envio). As checagens de cada transição (R4)
+    # entram antes, na ordem de declaração.
+    node.checks = regra_flow(node)
     p[0] = node
+
+
+def p_transition_list(p):
+    """transition_list : transition_list transition
+                       | transition"""
+    if len(p) == 3:
+        p[0] = p[1] + [p[2]]
+    else:
+        p[0] = [p[1]]
+
+
+def p_transition(p):
+    "transition : IDENTIFIER ARROW flow_target condition_opt SEMICOLON"
+    target_form, target_api, target_verb = p[3]
+    node = TransitionNode(
+        lineno=p.lineno(1),
+        source_form=p[1],
+        target_form=target_form,
+        target_api=target_api,
+        target_verb=target_verb,
+        condition=p[4],
+    )
+    # Regra R4 (global): origem, destino (etapa ou API.VERBO) e condição.
+    node.checks = [TransitionCheck(node)]
+    p[0] = node
+
+
+def p_flow_target(p):
+    """flow_target : IDENTIFIER
+                   | IDENTIFIER DOT http_verb"""
+    if len(p) == 2:
+        p[0] = (p[1], None, None)          # próxima etapa (outra página)
+    else:
+        p[0] = (None, p[1], p[3])          # envio para a API
+
+
+def p_condition_opt(p):
+    """condition_opt : WHEN condition
+                     | empty"""
+    p[0] = p[2] if len(p) == 3 else None
+
+
+def p_condition(p):
+    """condition : IDENTIFIER comparison_op condition_value
+                 | IDENTIFIER DOT IDENTIFIER comparison_op condition_value"""
+    if len(p) == 4:
+        p[0] = ConditionNode(
+            lineno=p.lineno(1), form_name=None, field_name=p[1],
+            operator=p[2], value=p[3],
+        )
+    else:
+        p[0] = ConditionNode(
+            lineno=p.lineno(1), form_name=p[1], field_name=p[3],
+            operator=p[4], value=p[5],
+        )
+
+
+def p_comparison_op(p):
+    """comparison_op : EQ
+                     | NE
+                     | LT
+                     | LE
+                     | GT
+                     | GE"""
+    p[0] = p[1]
+
+
+def p_condition_value(p):
+    """condition_value : STRING_LIT
+                       | number_lit
+                       | boolean_literal"""
+    p[0] = p[1]
 
 
 # ---------------------------------------------------------------------------

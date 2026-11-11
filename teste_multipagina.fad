@@ -1,4 +1,4 @@
-﻿form ResponsavelLegalStep {
+form ResponsavelLegalStep {
   nomeResponsavel: string {
     label = "Nome do Responsável";
     required = true;
@@ -20,6 +20,15 @@ form DadosCobrancaStep {
   };
 }
 
-wizard CadastroClienteWizard {
-  steps = [ResponsavelLegalStep, DadosCobrancaStep];
+api ClienteApi {
+  POST "/api/v1/clientes" {
+    consumes = CadastroClienteFlow;
+    produces = uuid;
+  }
+}
+
+// Formulário de duas páginas: a 1ª etapa é a origem da primeira transição.
+flow CadastroClienteFlow {
+  ResponsavelLegalStep -> DadosCobrancaStep;
+  DadosCobrancaStep -> ClienteApi.POST;
 }

@@ -26,11 +26,9 @@ import ply.lex as lex
 
 reserved = {
     "form": "FORM",
-    "wizard": "WIZARD",
-    "steps": "STEPS",
-    "submit": "SUBMIT",
     "api": "API",
     "flow": "FLOW",
+    "when": "WHEN",
     "validate": "VALIDATE",
     "theme": "THEME",
     "string": "TYPE_STRING",
@@ -76,6 +74,12 @@ tokens = list(dict.fromkeys([
     "COMMA",
     "DOT",
     "EQUALS",
+    "EQ",
+    "NE",
+    "LE",
+    "GE",
+    "LT",
+    "GT",
 ] + list(reserved.values())))
 
 t_LBRACE = r"\{"
@@ -88,6 +92,14 @@ t_COMMA = r","
 t_DOT = r"\."
 t_EQUALS = r"="
 t_ARROW = r"->"
+# Operadores de comparação das condições `when` do flow. O PLY testa as
+# expressões regulares mais longas primeiro, então "==" vence "=" e "<=" vence "<".
+t_EQ = r"=="
+t_NE = r"!="
+t_LE = r"<="
+t_GE = r">="
+t_LT = r"<"
+t_GT = r">"
 
 # Espaços horizontais são ignorados. Quebras de linha são contabilizadas
 # separadamente por t_newline.
