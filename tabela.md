@@ -29,7 +29,7 @@ Todos os atributos são **sintetizados** (calculados de baixo para cima na redu�
 
 ## 3. Tabela de produções × regras semânticas
 
-Natureza: **cópia** (repassa o atributo do filho), **constrói AST** (monta nó ou estrutura), **erro de parser** (checagem de duplicidade que já existia no parser e que continua igual), **R1–R7** (regras semânticas da seção 4).
+Natureza: **cópia** (repassa o atributo do filho), **constrói AST** (monta nó ou estrutura), **erro de parser** (checagem de duplicidade que já existia no parser e que continua igual), **R1–R11** (regras semânticas da seção 4).
 
 | # | Produção | Regra semântica | Natureza | Implementação |
 |---|---|---|---|---|
@@ -140,7 +140,7 @@ Substituem as antigas #68, #69 e #76–#78 (`condition`, `condition_value`). A n
 
 Regras semânticas novas (dentro de **R4**, `expressions.checar_condicao`): campo/formulário inexistente, `file` e lista proibidos, valor incompatível (`uuid` precisa ser válido), operador de ordem só em integer/float/date, campo×campo só de tipos compatíveis (integer×float é permitido), operando solto precisa ser boolean, e os **avisos** (campo opcional na condição, condição constante — `deps = ∅` —, valor repetido em `in`, `is empty` em boolean). Em **R6**, a regra dos dominadores percorre todas as referências `Etapa.campo` da expressão.
 
-## 4. Regras semânticas R1–R7
+## 4. Regras semânticas R1–R11
 
 Há dois tipos de regra:
 
@@ -155,11 +155,14 @@ Há dois tipos de regra:
 | **R4** | `transition` (#63) → `program` | global | origem inexistente → `Flow '…' referencia origem inexistente '…'.`; etapa destino inexistente → `Flow '…' referencia etapa inexistente '…'.`; API inexistente → `Flow '…' referencia API inexistente '…'.`; verbo ausente → `API destino '…' não suporta o verbo '…' no flow.`; condição: form/campo inexistente, campo `file` ou lista, valor de tipo incompatível, data/uuid inválido, operador de ordem (`<`, `<=`, `>`, `>=`) fora de integer/float/date, campos de tipos incompatíveis numa comparação, operando solto não booleano (ver 3.1); **avisos** (`Aviso Semântico`) só se não houve erro na condição | linha da transição |
 | **R5** | `endpoint_decl` (#47) → `program` | global | `consumes` não é form nem o flow → `Endpoint '… …' consome formulário ou flow inexistente '…'.`; `{param}` não é campo do form consumido → `Parâmetro de rota '{…}' não declarado no formulário '…'.`; se consome o flow, `{param}` não é campo de nenhuma etapa → `Parâmetro de rota '{…}' não declarado em nenhuma etapa do flow '…'.` | linha do token `STRING_LIT` da rota (`endpoint_decl` usa `p.lineno(2)`; antes `p.lineno(1)` era o não-terminal `http_verb` e dava `0`) |
 | **R6** | `flow_decl` (#60) → `program` | global | nome do flow igual ao de um form (sem diferenciar maiúsculas) → erro; depois resolve os R4 das transições, na ordem. Se não houve erro e o flow não é de uma linha só, analisa o grafo (`flow_graph.FlowGraph`): etapa sem saída; transição depois do caminho padrão (nunca usada); etapa só com transições `when`; ciclo; etapa inalcançável a partir da inicial; campo repetido entre etapas; herança `default = Etapa.campo` ou condição `Etapa.campo` de etapa que não vem antes em **todos** os caminhos (dominadores); envio depois de várias etapas para endpoint que não consome o flow | linha da transição (ou do campo); ciclo e nome na linha do flow |
-| **R7** | `program` (#1) | raiz | monta `symtab` e resolve as pendências de R2, R4, R5 e R6 na ordem: forms (campos, depois `validate`) → apis → flow | — |
+| **R7** | `program` (#1) | raiz | monta `symtab` e resolve as pendências de R2, R4, R5, R6, R9, R10 e R11 na ordem: forms (campos, `validate`, R10/R11) → apis (R5/R9) → flow | — |
+| **R9** (a R8 fica reservada ao bloco `database` da fase 2) | `endpoint_decl` (#47) → `program` (dentro de `EndpointCheck`) | global | todo `{param}` da rota, já declarado, precisa ser campo `required = true` (do form consumido ou, se consome o flow, de alguma etapa) → `Parâmetro de rota '{…}' precisa ser um campo obrigatório (required = true) do formulário '…': ele identifica o registro.` (vira índice `UNIQUE` no banco) | linha da rota |
+| **R10** | `form_decl` (#14) → `program` (`TabelaCheck`) | global | dois forms gravados por algum endpoint cujos nomes só diferem em maiúsculas → `Os formulários 'A' e 'a' usam a mesma tabela 'a' (nomes que só diferem em maiúsculas).` (erro no segundo) | linha do form |
+| **R11** | `form_decl` (#14) → `program` (`TabelaCheck`) | global | campo `id` (sem diferenciar maiúsculas) em form gravado por endpoint → `O campo '…' do formulário '…' conflita com a chave primária automática 'id' da tabela; renomeie o campo.` | linha do campo |
 
 ### Ordem das mensagens
 
-`program.errors` sai sempre na mesma ordem: para cada form (na ordem do código) os checks dos campos e em seguida os do `validate`; depois as APIs (endpoint a endpoint); por fim o flow (nome, transições na ordem e depois o grafo). Para programas sem os recursos novos, a saída é idêntica à da versão anterior (verificado por `oracle/test_oracle.py`).
+`program.errors` sai sempre na mesma ordem: para cada form (na ordem do código) os checks dos campos, em seguida os do `validate` e por fim R10/R11; depois as APIs (endpoint a endpoint); por fim o flow (nome, transições na ordem e depois o grafo). Para programas sem os recursos novos, a saída é idêntica à da versão anterior (verificado por `oracle/test_oracle.py`).
 
 ### Atributo herdado simulado
 
@@ -221,3 +224,4 @@ program resolve: "Nope" ∉ symtab.forms ∪ symtab.flows → Erro(0, ...)
 - **Corrigido (era "Linha 0"):** os erros de endpoint agora saem com a linha da rota.
 - **Nomes duplicados** (campo, form, api, endpoint, bloco `validate`, propriedades, cabeçalho) levantam `parser.CompileError` com a linha. Antes usavam `SyntaxError` dentro da ação, que o PLY engole (só "Failed to construct AST" e, com declarações depois do duplicado, formulários descartados em silêncio). `CompileError` herda de `Exception` de propósito. A compilação para no primeiro duplicado.
 - A árvore de derivação do `teste.fad` não mudou com as expressões: ele só usa `condition_opt → empty`, e `tests/golden/teste_reducoes.txt` (sequência de reduções) é conferida por `tests/test_expressions.py`.
+- **Persistência (fase 1):** nenhuma produção nova (continuam 104). R9–R11 são verificações pendentes (`EndpointCheck`, `TabelaCheck`) resolvidas em `program`. O esquema SQL (`generator_sql.py`) é gerado a partir dos mesmos campos, `required`, `default`, `min` e `max` que a validação do `app.py` usa, para o banco nunca rejeitar o que a aplicação aceita. Detalhes: `README.md` (seção Persistência).

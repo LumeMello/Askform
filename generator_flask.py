@@ -33,6 +33,7 @@ from typing import Any, Dict, List
 
 from expressions import Escopo, avaliar_json, para_json
 from flow_graph import FlowGraph
+from generator_sql import render_schema_sql, tabelas
 from symbol_table import ProgramNode, FieldRefNode
 
 
@@ -101,6 +102,35 @@ def _field_config(form: Any, optional: bool = False) -> Dict[str, Dict[str, Any]
         }
 
     return result
+
+
+_INIT_DB = """
+def _existing_columns(connection, table):
+    return {row['name'] for row in connection.execute(f'PRAGMA table_info({quote_identifier(table)})')}
+
+
+def init_db():
+    \"\"\"Cria tabelas e índices que faltam e acrescenta colunas novas (nunca apaga nada).\"\"\"
+    Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
+    with get_connection() as connection:
+        for table in TABLES:
+            name = table['name']
+            existed = bool(_existing_columns(connection, name))
+            connection.execute(table['create'])
+            if existed:
+                present = _existing_columns(connection, name)
+                for column in table['columns']:
+                    if column['name'] not in present:
+                        connection.execute(f'ALTER TABLE {quote_identifier(name)} ADD COLUMN {column["add"]}')
+                        logger.info('Coluna %s acrescentada à tabela %s', column['name'], name)
+            for index in table['indexes']:
+                try:
+                    connection.execute(index['create'])
+                except sqlite3.IntegrityError:
+                    logger.warning(
+                        'Já existem valores repetidos em %s.%s: o índice único %s não foi criado; '
+                        'o POST continua recusando duplicados (409).', name, index['column'], index['name'])
+"""
 
 
 _FLOW_HELPERS = """
@@ -211,8 +241,10 @@ def _flow_runtime_config(ast: ProgramNode) -> Dict[str, Any]:
     return {"start": graph.start, "steps": steps}
 
 
-def _render_flask_app(ast: ProgramNode) -> str:
-    """Renderiza a aplicação Flask com middleware CORS e endpoints CRUD."""
+def _render_flask_app(ast: ProgramNode):
+    """Renderiza a aplicação Flask com middleware CORS e endpoints CRUD.
+
+    Devolve (código do app.py, texto do schema.sql)."""
     endpoint_configs: List[Dict[str, Any]] = []
     routes: List[Dict[str, Any]] = []
 
@@ -284,6 +316,14 @@ def _render_flask_app(ast: ProgramNode) -> str:
                 "function": f"endpoint_{config_id}_{method.lower()}",
             })
 
+    # MODIFICADO (persistência): esquema SQL e chaves únicas (campos usados como
+    # {param} de rota) por tabela; cada endpoint conhece as colunas únicas da sua tabela.
+    sql_tables = tabelas(endpoint_configs)
+    unique_by_table = {t["name"]: t["unique"] for t in sql_tables}
+    for config in endpoint_configs:
+        config["unique"] = unique_by_table[config["table"]]
+    schema_sql = render_schema_sql(sql_tables)
+
     w = CodeWriter()
     w.write_line('"""Aplicação Flask gerada automaticamente pelo Askform."""')
     w.write_line("import datetime")
@@ -299,8 +339,11 @@ def _render_flask_app(ast: ProgramNode) -> str:
     w.write_line()
     w.write_line("app = Flask(__name__)")
     w.write_line("BASE_DIR = Path(__file__).resolve().parent")
-    w.write_line("UPLOAD_FOLDER = Path(os.environ.get('ASKFORM_UPLOAD_FOLDER', BASE_DIR / 'uploads'))")
-    w.write_line("DB_NAME = os.environ.get('ASKFORM_DATABASE', str(BASE_DIR / 'database.db'))")
+    # MODIFICADO (persistência): os dados ficam FORA da pasta gerada (dist/), em
+    # data/ ao lado dela, para sobreviverem a apagar dist/ e recompilar.
+    w.write_line("DATA_DIR = Path(os.environ.get('ASKFORM_DATA_DIR', BASE_DIR.parent / 'data'))")
+    w.write_line("UPLOAD_FOLDER = Path(os.environ.get('ASKFORM_UPLOAD_FOLDER', DATA_DIR / 'uploads'))")
+    w.write_line("DB_NAME = os.environ.get('ASKFORM_DATABASE', str(DATA_DIR / 'database.db'))")
     w.write_line("MAX_CONTENT_LENGTH = int(os.environ.get('ASKFORM_MAX_CONTENT_LENGTH', 16 * 1024 * 1024))")
     w.write_line("app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH")
     w.write_line("UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)")
@@ -344,24 +387,12 @@ def _render_flask_app(ast: ProgramNode) -> str:
     w.dedent()
     w.write_line()
 
-    w.write_line("def init_db():")
-    w.indent()
-    w.write_line("with get_connection() as connection:")
-    w.indent()
-    w.write_line("for config in ENDPOINT_CONFIGS:")
-    w.indent()
-    w.write_line("columns = ['\"id\" INTEGER PRIMARY KEY AUTOINCREMENT']")
-    w.write_line("for field_name, spec in config['fields'].items():")
-    w.indent()
-    w.write_line("field_type = spec['type']")
-    w.write_line("sql_type = 'INTEGER' if field_type in ('integer', 'boolean') else ('REAL' if field_type == 'float' else 'TEXT')")
-    w.write_line("columns.append(f'{quote_identifier(field_name)} {sql_type}')")
-    w.dedent()
-    w.write_line("table = quote_identifier(config['table'])")
-    w.write_line("connection.execute(f'CREATE TABLE IF NOT EXISTS {table} ({\", \".join(columns)})')")
-    w.dedent()
-    w.dedent()
-    w.dedent()
+    # MODIFICADO (persistência): esquema vem do generator_sql (mesmo texto do
+    # schema.sql); init_db cria o que falta e só ACRESCENTA colunas.
+    w.write_line(f"TABLES = {sql_tables!r}")
+    w.write_line()
+    for line in _INIT_DB.strip("\n").split("\n"):
+        w.write_line(line)
     w.write_line()
 
     w.write_line("def _json_error(message, status):")
@@ -593,6 +624,16 @@ def _render_flask_app(ast: ProgramNode) -> str:
     w.write_line("placeholders = ', '.join('?' for _ in prepared)")
     w.write_line("with get_connection() as connection:")
     w.indent()
+    # MODIFICADO (persistência): 409 para chave repetida; vale também em banco antigo sem o índice único.
+    w.write_line("for column in config.get('unique', []):")
+    w.indent()
+    w.write_line("value = prepared.get(column)")
+    w.write_line("if value is not None and connection.execute(f'SELECT 1 FROM {table} WHERE {quote_identifier(column)} = ? LIMIT 1', (value,)).fetchone():")
+    w.indent()
+    w.write_line("_cleanup_saved_files(saved_paths)")
+    w.write_line("return _json_error(f'Já existe um registro com {column} = {value}', 409)")
+    w.dedent()
+    w.dedent()
     w.write_line("cursor = connection.execute(f'INSERT INTO {table} ({columns}) VALUES ({placeholders})', tuple(prepared.values()))")
     w.write_line("record_id = cursor.lastrowid")
     w.dedent()
@@ -660,6 +701,13 @@ def _render_flask_app(ast: ProgramNode) -> str:
     w.write_line("_cleanup_saved_files(saved_paths)")
     w.write_line("return _json_error(str(exc), 400)")
     w.dedent()
+    w.write_line("except sqlite3.IntegrityError as exc:")
+    w.indent()
+    w.write_line("_cleanup_saved_files(saved_paths)")
+    w.write_line("if 'UNIQUE' in str(exc): return _json_error('Já existe um registro com o mesmo valor em um campo único', 409)")
+    w.write_line("logger.exception('Violação de restrição no endpoint %s', config['form'])")
+    w.write_line("return _json_error('Não foi possível concluir a operação no banco de dados', 500)")
+    w.dedent()
     w.write_line("except sqlite3.Error:")
     w.indent()
     w.write_line("_cleanup_saved_files(saved_paths)")
@@ -703,19 +751,25 @@ def _render_flask_app(ast: ProgramNode) -> str:
     w.write_line("app.run(host=host, port=port, debug=False)")
     w.dedent()
 
-    return w.get_code()
+    return w.get_code(), schema_sql
 
 
 def generate_flask(ast: ProgramNode, output_dir: str = "dist") -> str:
     """Gera dist/app.py e retorna o caminho do arquivo criado."""
     os.makedirs(output_dir, exist_ok=True)
     filepath = os.path.join(output_dir, "app.py")
-    generated_code = _render_flask_app(ast)
+    generated_code, schema_sql = _render_flask_app(ast)
 
     compile(generated_code, filepath, "exec")
 
     with open(filepath, "w", encoding="utf-8", newline="\n") as output_file:
         output_file.write(generated_code)
+
+    # MODIFICADO (persistência): esquema SQL à parte (leitura e uso manual).
+    schema_path = os.path.join(output_dir, "schema.sql")
+    with open(schema_path, "w", encoding="utf-8", newline="\n") as schema_file:
+        schema_file.write(schema_sql)
+    print(f"[SUCESSO] Esquema SQL gerado em: {schema_path}")
 
     print(f"[SUCESSO] Aplicação Flask dinâmica gerada em: {filepath}")
     return filepath

@@ -7,7 +7,7 @@ O **Askform** é uma linguagem de domínio específico (DSL) e compilador constr
 
 O compilador lê arquivos de especificação (`.fad` / `.askform`), realiza análise léxica, sintática e semântica estrita, e gera automaticamente como artefatos finalizados:
 1. **Página HTML5 responsiva** (`dist/<form_name>.html`) com suporte nativo a `FormData`, validações no lado do cliente, suporte a envio de arquivos e fallback automático de comunicação via `fetch` HTTP.
-2. **Servidor backend em Flask** (`dist/app.py`) dinâmico com persistência automática em banco de dados SQLite (`database.db`), middleware com suporte total a CORS, sanitização de identificadores SQL e tratamento de uploads de arquivos.
+2. **Servidor backend em Flask** (`dist/app.py`) dinâmico com persistência automática em banco de dados SQLite (`data/database.db`, com `dist/schema.sql` gerado), middleware com suporte total a CORS, sanitização de identificadores SQL e tratamento de uploads de arquivos.
 
 📖 **[Acesse a Documentação Completa no Google Drive](https://docs.google.com/document/d/1LmWLQvcHF1gwP22vvsaTMDQxMBQqgxs6z66bm8NaOCc/edit?usp=sharing)**
 
@@ -69,7 +69,7 @@ form ProfileForm {
 * `boolean`: Campo lógico (renderizado como checkbox no HTML).
 * `date`: Data (formato ISO `YYYY-MM-DD`).
 * `uuid`: Identificador único no padrão UUID v4.
-* `file`: Upload de arquivos (armazenado de forma segura no backend em `uploads/`).
+* `file`: Upload de arquivos (armazenado de forma segura no backend em `data/uploads/`).
 
 #### Propriedades de Campo
 * `label = "Texto"`: Rótulo exibido na interface gráfica.
@@ -237,7 +237,14 @@ Execute o servidor Flask gerado para habilitar os endpoints e o banco de dados S
 python dist/app.py
 ```
 
-O servidor será iniciado por padrão em `http://127.0.0.1:5000`. O banco de dados SQLite `database.db` e o repositório de uploads `uploads/` serão criados na mesma pasta automaticamente.
+O servidor será iniciado por padrão em `http://127.0.0.1:5000`.
+
+**Persistência:**
+* **Onde ficam os dados:** o banco (`database.db`) e os uploads (`uploads/`) ficam na pasta **`data/`, ao lado do `dist/`** (fora dele), então apagar `dist/` e recompilar não perde nada. Troque com `ASKFORM_DATA_DIR` (pasta toda), `ASKFORM_DATABASE` (só o banco) ou `ASKFORM_UPLOAD_FOLDER` (só os uploads).
+* **`dist/schema.sql`:** o compilador gera o esquema (uma tabela por formulário ou flow consumido) e o `app.py` aplica o mesmo esquema ao subir. `required` vira `NOT NULL` (exceto em flow, onde o servidor decide por caminho), `default` vira `DEFAULT`, `min`/`max` viram `CHECK` (valor em integer/float, tamanho em string) e o `pattern` fica só na aplicação.
+* **Chave da rota:** o campo usado em `{param}` precisa ser `required` (erro de compilação) e vira índice `UNIQUE`. `POST` com chave repetida responde **409**; `PUT`/`PATCH` que repetem a chave de outro registro também.
+* **Mudou o `.fad`?** Campo novo vira coluna nova (anulável, sem `CHECK`) e os dados são mantidos; o servidor nunca apaga coluna nem dado (renomear um campo cria coluna nova e mantém a antiga). Se o banco antigo já tem chaves repetidas, o servidor sobe, avisa no log que não criou o índice único e o `POST` continua devolvendo 409.
+* **Nomes reservados:** um campo chamado `id` (de formulário gravado por endpoint) conflita com a chave automática e é erro; dois formulários gravados que só diferem em maiúsculas usariam a mesma tabela e também são erro.
 
 ---
 
@@ -275,10 +282,11 @@ python tests/test_flow.py
 python tests/test_expressions.py
 python tests/test_compat_preE.py
 python tests/test_erros.py
+python tests/test_persistencia.py
 python oracle/test_oracle.py
 ```
 
-O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; `test_erros.py` cobre as mensagens de duplicidade e a linha dos erros de endpoint; o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
+O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; `test_erros.py` cobre as mensagens de duplicidade e a linha dos erros de endpoint; `test_persistencia.py` cobre `schema.sql`, 409, migração, pasta `data/` e as regras R9–R11; o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
 
 ---
 

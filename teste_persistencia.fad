@@ -1,0 +1,28 @@
+// Persistência (fase 1). Compile e suba o servidor:
+//   python main.py teste_persistencia.fad
+//   python dist/app.py          (os dados ficam em ./data, fora de dist/)
+// Veja dist/schema.sql: NOT NULL, DEFAULT, CHECK de min/max e índice UNIQUE.
+//   curl -X POST localhost:5000/clientes -H "Content-Type: application/json" \
+//        -d '{"email":"a@x.com","nome":"Ana","idade":30}'     -> 201
+//   (repita o mesmo comando)                                   -> 409
+form ClienteForm {
+  email: string { required = true; label = "E-mail"; };
+  nome: string { required = true; default = "Sem nome"; };
+  idade: integer { default = 18; };
+  newsletter: boolean { default = true; };
+  obs: string;
+  validate nome { min = 2; max = 50; message = "Nome entre 2 e 50 caracteres"; }
+  validate idade { min = 0; max = 130; }
+}
+
+api ClienteApi {
+  POST "/clientes" { consumes = ClienteForm; produces = uuid; }
+  GET "/clientes/{email}" { consumes = ClienteForm; produces = string; }
+  PUT "/clientes/{email}" { consumes = ClienteForm; produces = boolean; }
+  PATCH "/clientes/{email}" { consumes = ClienteForm; produces = boolean; }
+  DELETE "/clientes/{email}" { consumes = ClienteForm; produces = boolean; }
+}
+
+flow ClienteFlow {
+  ClienteForm -> ClienteApi.POST;
+}

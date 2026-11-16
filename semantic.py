@@ -182,6 +182,59 @@ def regra_validate(form) -> List[Erro]:
     return erros
 
 
+# ---------------------------------------------------------------------------
+# R10 e R11 — form_decl (GLOBAL): o form vira uma tabela do banco
+# ---------------------------------------------------------------------------
+
+def _forms_com_tabela(st: SymbolTable) -> List[str]:
+    """Nomes dos forms que algum endpoint grava (direto ou como etapa do flow consumido)."""
+    usados: List[str] = []
+    for api in st.apis.values():
+        for ep in api.endpoints:
+            if not ep.consumes:
+                continue
+            if ep.consumes in st.forms:
+                nomes = [ep.consumes]
+            elif ep.consumes in st.flows:
+                nomes = [s for s in FlowGraph(st.flows[ep.consumes]).steps if s in st.forms]
+            else:
+                continue
+            usados.extend(n for n in nomes if n not in usados)
+    return usados
+
+
+@dataclass
+class TabelaCheck(Verificacao):
+    """
+    MODIFICADO (persistência): só vale para forms gravados por algum endpoint
+    (um form só de HTML não vira tabela e pode ter qualquer nome de campo).
+      R10  dois forms cujos nomes só diferem em maiúsculas usam a mesma tabela;
+      R11  campo `id` (sem diferenciar maiúsculas) colide com a chave automática.
+    """
+    form: Any
+
+    def resolver(self, st: SymbolTable) -> List[Erro]:
+        usados = _forms_com_tabela(st)
+        if self.form.name not in usados:
+            return []
+        erros: List[Erro] = []
+        anteriores = [n for n in st.forms if n in usados]
+        anteriores = anteriores[:anteriores.index(self.form.name)]
+        for outro in anteriores:
+            if outro.lower() == self.form.name.lower():
+                erros.append(Erro(
+                    self.form.lineno,
+                    f"Os formulários '{outro}' e '{self.form.name}' usam a mesma tabela "
+                    f"'{self.form.name.lower()}' (nomes que só diferem em maiúsculas)."))
+        for campo in self.form.fields.values():
+            if campo.name.lower() == "id":
+                erros.append(Erro(
+                    campo.lineno,
+                    f"O campo '{campo.name}' do formulário '{self.form.name}' conflita com a chave "
+                    f"primária automática 'id' da tabela; renomeie o campo."))
+        return erros
+
+
 def regra_form(form) -> List[Verificacao]:
     """
     Atributo sintetizado form_decl.checks (ordem: campos, depois validate).
@@ -198,6 +251,7 @@ def regra_form(form) -> List[Verificacao]:
     erros = regra_validate(form)
     if erros:
         checks.append(Resolvida(erros))
+    checks.append(TabelaCheck(form))      # MODIFICADO (persistência): R10 e R11
     return checks
 
 
@@ -244,6 +298,13 @@ class TransitionCheck(Verificacao):
 # R5 — endpoint_decl (GLOBAL)
 # ---------------------------------------------------------------------------
 
+def _msg_r9(param: str, onde: str) -> str:
+    # MODIFICADO (persistência, R9): o campo da rota identifica o registro e vira
+    # índice UNIQUE no banco; sem required ele aceitaria vazio.
+    return (f"Parâmetro de rota '{{{param}}}' precisa ser um campo obrigatório "
+            f"(required = true) do {onde}: ele identifica o registro.")
+
+
 @dataclass
 class EndpointCheck(Verificacao):
     endpoint: Any
@@ -263,17 +324,22 @@ class EndpointCheck(Verificacao):
             for p in params:
                 if p not in form.fields:
                     erros.append(Erro(ep.lineno, f"Parâmetro de rota '{{{p}}}' não declarado no formulário '{form.name}'."))
+                elif not form.fields[p].properties.get("required"):
+                    erros.append(Erro(ep.lineno, _msg_r9(p, f"formulário '{form.name}'")))
         else:
             # Endpoint que recebe o flow inteiro: a rota pode usar campos de
             # qualquer etapa.
             flow = st.flows[ep.consumes]
-            campos = set()
+            campos = {}
             for step in FlowGraph(flow).steps:
                 if step in st.forms:
-                    campos.update(st.forms[step].fields)
+                    for nome, campo in st.forms[step].fields.items():
+                        campos.setdefault(nome, (step, campo))
             for p in params:
                 if p not in campos:
                     erros.append(Erro(ep.lineno, f"Parâmetro de rota '{{{p}}}' não declarado em nenhuma etapa do flow '{flow.name}'."))
+                elif not campos[p][1].properties.get("required"):
+                    erros.append(Erro(ep.lineno, _msg_r9(p, f"formulário '{campos[p][0]}' (etapa do flow '{flow.name}')")))
         return erros
 
 
