@@ -25,6 +25,7 @@ from lexer import tokens
 from symbol_table import (
     ProgramNode,
     ThemeNode,
+    DatabaseNode,
     FormNode,
     FormFieldNode,
     ValidationBlockNode,
@@ -40,6 +41,7 @@ from symbol_table import (
 from semantic import (
     regra_default,
     regra_form,
+    regra_database,
     TransitionCheck,
     Aviso,
     EndpointCheck,
@@ -80,6 +82,13 @@ def p_program(p):
             _insert_unique(program_node.forms, decl.name, decl, "Formulário", decl.lineno)
         elif isinstance(decl, ApiNode):
             _insert_unique(program_node.apis, decl.name, decl, "API", decl.lineno)
+        elif isinstance(decl, DatabaseNode):
+            # MODIFICADO (persistência fase 2): no máximo um bloco database por arquivo.
+            if program_node.database is not None:
+                raise CompileError(
+                    f"Bloco database duplicado na linha {decl.lineno}: {decl.name!r} "
+                    f"(já existe {program_node.database.name!r}; use um só)")
+            program_node.database = decl
 
     # MODIFICADO (SDD) — regra R7 (raiz): sintetiza program.symtab e, com a
     # tabela completa, resolve as pendências (R2, R4, R5, R6) gerando
@@ -110,7 +119,8 @@ def p_body_declarations(p):
 
 def p_body_declaration(p):
     """body_declaration : form_decl
-                        | api_decl"""
+                        | api_decl
+                        | database_decl"""
     p[0] = p[1]
 
 
@@ -142,6 +152,39 @@ def p_theme_props(p):
 
 def p_theme_prop(p):
     "theme_prop : IDENTIFIER EQUALS literal_val SEMICOLON"
+    p[0] = {p[1]: p[3]}
+
+
+# ---------------------------------------------------------------------------
+# Banco de dados (MODIFICADO — persistência fase 2)
+#
+# `database` é mais uma alternativa de body_declaration (e não um filho novo de
+# `program`), então a árvore de derivação dos programas que não usam o bloco,
+# como o teste.fad, não muda. As chaves são IDENTIFIER genéricos (como no tema):
+# engine, path e schema NÃO são palavras reservadas; a regra R8 confere os nomes.
+# ---------------------------------------------------------------------------
+
+def p_database_decl(p):
+    "database_decl : DATABASE IDENTIFIER LBRACE database_props RBRACE"
+    node = DatabaseNode(lineno=p.lineno(1), name=p[2], properties=p[4])
+    # regra R8 (local): atributo sintetizado database_decl.checks
+    node.checks = regra_database(node)
+    p[0] = node
+
+
+def p_database_props(p):
+    """database_props : database_props database_prop
+                      | empty"""
+    if len(p) == 3:
+        props = dict(p[1])
+        _merge_unique(props, p[2], "Propriedade de database", p.lineno(2))
+        p[0] = props
+    else:
+        p[0] = {}
+
+
+def p_database_prop(p):
+    "database_prop : IDENTIFIER EQUALS literal_val SEMICOLON"
     p[0] = {p[1]: p[3]}
 
 

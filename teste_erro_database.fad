@@ -1,0 +1,10 @@
+// Regra R8: engine "memory" não tem arquivo, então 'path' não pode aparecer.
+// Esperado: 1 erro semântico na linha 7 (linha do bloco database).
+form F {
+  a: string;
+}
+
+database Dados {
+  engine = "memory";
+  path = "x.db";
+}

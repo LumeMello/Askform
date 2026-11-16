@@ -183,6 +183,45 @@ def regra_validate(form) -> List[Erro]:
 
 
 # ---------------------------------------------------------------------------
+# R8 — database_decl (LOCAL): bloco `database` (persistência fase 2)
+# ---------------------------------------------------------------------------
+
+_DB_PROPS = ("engine", "path", "schema")
+_DB_ENGINES = ("sqlite", "memory")
+_DB_SCHEMAS = ("auto", "manual")
+
+
+def regra_database(db) -> List[Verificacao]:
+    """
+    R8 (local): só depende das propriedades do próprio bloco, então é resolvida
+    na redução de database_decl e entra em `checks` como verificação já pronta.
+    """
+    n, linha, props = db.name, db.lineno, db.properties
+    erros: List[Erro] = []
+    for chave, valor in props.items():
+        if chave not in _DB_PROPS:
+            erros.append(Erro(linha, f"Propriedade desconhecida '{chave}' no bloco database '{n}' (use engine, path ou schema)."))
+        elif not isinstance(valor, str) or isinstance(valor, bool):
+            erros.append(Erro(linha, f"A propriedade '{chave}' do bloco database '{n}' deve ser um texto."))
+    if erros:
+        return [Resolvida(erros)]
+    engine = props.get("engine", "sqlite")
+    schema = props.get("schema", "auto")
+    if engine not in _DB_ENGINES:
+        erros.append(Erro(linha, f"engine '{engine}' desconhecido no bloco database '{n}' (use \"sqlite\" ou \"memory\")."))
+    if schema not in _DB_SCHEMAS:
+        erros.append(Erro(linha, f"schema '{schema}' desconhecido no bloco database '{n}' (use \"auto\" ou \"manual\")."))
+    if "path" in props and not props["path"].strip():
+        erros.append(Erro(linha, f"A propriedade 'path' do bloco database '{n}' não pode ser vazia."))
+    if not erros and engine == "memory":
+        if "path" in props:
+            erros.append(Erro(linha, f"O bloco database '{n}' usa engine \"memory\", que não tem arquivo: remova 'path'."))
+        if schema == "manual":
+            erros.append(Erro(linha, f"O bloco database '{n}' usa engine \"memory\" com schema \"manual\": não há banco para aplicar o schema.sql à mão."))
+    return [Resolvida(erros)] if erros else []
+
+
+# ---------------------------------------------------------------------------
 # R10 e R11 — form_decl (GLOBAL): o form vira uma tabela do banco
 # ---------------------------------------------------------------------------
 
@@ -510,6 +549,8 @@ def resolver_programa(ast: ProgramNode) -> List[Erro]:
     """
     st = ast.symtab
     erros: List[Erro] = []
+    if ast.database is not None:                 # MODIFICADO (persistência fase 2): R8
+        erros.extend(_resolver_lista(ast.database.checks, st))
     for form in st.forms.values():
         erros.extend(_resolver_lista(form.checks, st))
     for api in st.apis.values():

@@ -64,8 +64,8 @@ form ProfileForm {
 
 #### Tipos Primitivos de Campos (`field_type`)
 * `string`: Texto simples.
-* `integer`: Números inteiros.
-* `float`: Números decimais.
+* `integer`: Números inteiros de **64 bits com sinal** (−9223372036854775808 a 9223372036854775807, o `INTEGER` do SQLite). O servidor responde 400 para valor fora do intervalo ou decimal não inteiro (`1.5`; `3.0` vale 3), e o compilador recusa literal inteiro acima de 2⁶³−1 (`default`, `min`, `max`, `when`).
+* `float`: Números decimais (duplas de 64 bits; um literal que vira infinito é erro de compilação).
 * `boolean`: Campo lógico (renderizado como checkbox no HTML).
 * `date`: Data (formato ISO `YYYY-MM-DD`).
 * `uuid`: Identificador único no padrão UUID v4.
@@ -169,6 +169,7 @@ flow CadastroFlow {
 * **Booleano sozinho:** um campo `boolean` (ou `true`/`false`) já é uma condição: `when possuiDocumento and not menor`.
 * **Lista e vazio:** `campo in ("a", "b")`, `campo not in (...)`, `campo is empty`, `campo is not empty`. As palavras `and or not in is empty` agora são reservadas e não servem como nome de campo.
 * **Campo da condição:** `campo` (da própria etapa de origem) ou `Etapa.campo` (de uma etapa que vem antes em todos os caminhos). Campos `file` e listas (`tipo[]`) não podem ser usados.
+* **Inteiros grandes:** acima de 2⁵³ o navegador (JavaScript) pode comparar de forma diferente do servidor; o compilador avisa e o servidor decide o caminho com o valor exato.
 * **Valor:** literal do mesmo tipo do campo (`"texto"`, `10`, `1.5`, `true`/`false`; datas como `"2024-01-31"`; `uuid` precisa ser um UUID válido).
 * **Campo vazio:** a lógica é de dois valores. Comparação, `in` e `not in` com campo vazio dão falso; `not` apenas inverte; `boolean` ausente vale falso. Para tratar o vazio use `is empty`.
 * **Avisos** (não impedem a compilação nem mudam o código de saída): campo opcional usado na condição (sem `is empty` na mesma condição), condição sempre verdadeira ou falsa, valor repetido em `in (...)`, `is empty` em campo booleano.
@@ -180,6 +181,26 @@ flow CadastroFlow {
 **Saída gerada:** um flow de uma linha gera a página do formulário (`dist/<form>.html`), como antes. Um flow com várias etapas ou com `when` gera uma única página `dist/<flow>.html` com botões **Voltar** e **Próximo** (o último vira **Enviar dados**).
 
 > O antigo bloco `wizard` foi removido: o que ele fazia (etapas em sequência, herança entre etapas e envio para a API) agora é escrito no `flow`.
+
+---
+
+### 5. Bloco `database` (Onde e como guardar os dados)
+
+Opcional e no máximo um por arquivo; pode aparecer em qualquer posição entre os `form`/`api`. Sem ele, vale o padrão: SQLite em `data/database.db`, com o esquema criado e migrado automaticamente.
+
+```dsl
+database Dados {
+  engine = "sqlite";    // "sqlite" (padrão) ou "memory"
+  path   = "meus.db";   // só sqlite; relativo a data/ (um caminho absoluto vale como está)
+  schema = "auto";      // "auto" (padrão) ou "manual"
+}
+```
+
+* **`engine = "memory"`:** o banco vive só na memória do servidor (uma conexão única com trava, uma requisição por vez). Nada é gravado em disco e os dados somem ao parar o servidor; serve para demonstrações e testes e só funciona com um processo. `ASKFORM_DATABASE` é ignorada.
+* **`path`:** arquivo do banco dentro de `data/` (subpastas são criadas). A variável `ASKFORM_DATABASE`, se definida, vence o `path`.
+* **`schema = "manual"`:** o servidor **não cria nem altera nada**; ao subir, só confere as tabelas e colunas e registra no log um aviso do que falta em relação ao `dist/schema.sql`, que você aplica por conta própria. O servidor sobe mesmo assim (as requisições para tabelas ausentes dão erro 500).
+* **Regras verificadas (R8):** só `engine`, `path` e `schema`; todos os valores são texto; `engine` e `schema` com os valores acima; `path` não vazio; `memory` não aceita `path` nem `schema = "manual"`.
+* Só `database` vira palavra reservada; `engine`, `path` e `schema` continuam servindo como nome de campo.
 
 ---
 
@@ -283,10 +304,12 @@ python tests/test_expressions.py
 python tests/test_compat_preE.py
 python tests/test_erros.py
 python tests/test_persistencia.py
+python tests/test_numeros.py
+python tests/test_database.py
 python oracle/test_oracle.py
 ```
 
-O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; `test_erros.py` cobre as mensagens de duplicidade e a linha dos erros de endpoint; `test_persistencia.py` cobre `schema.sql`, 409, migração, pasta `data/` e as regras R9–R11; o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
+O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; `test_erros.py` cobre as mensagens de duplicidade e a linha dos erros de endpoint; `test_persistencia.py` cobre `schema.sql`, 409, migração, pasta `data/` e as regras R9–R11; `test_numeros.py` cobre o intervalo de `integer` (servidor e léxico) e o aviso de precisão em condições; `test_database.py` cobre o bloco `database` (gramática, R8, memória, `path`, `schema` manual); o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
 
 ---
 

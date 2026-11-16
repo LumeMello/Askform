@@ -1,0 +1,6 @@
+// Literais fora do intervalo são erro léxico (antes compilavam e davam 500 no servidor).
+// Esperado: "Inteiro fora do intervalo de 64 bits na linha 5, coluna 28".
+form F {
+  codigo: integer { required = true; };
+  qtd: integer { default = 99999999999999999999; };
+}

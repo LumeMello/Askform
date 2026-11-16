@@ -29,6 +29,14 @@ class ThemeNode(ASTNode):
     properties: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
+class DatabaseNode(ASTNode):
+    """MODIFICADO (persistência fase 2): bloco `database` (engine, path, schema)."""
+    name: str = ""
+    properties: Dict[str, Any] = field(default_factory=dict)
+    # atributo sintetizado `checks` (regra R8, local)
+    checks: List[Any] = field(default_factory=list, repr=False, compare=False)
+
+@dataclass
 class FieldRefNode(ASTNode):
     form_name: str = ""
     field_name: str = ""
@@ -153,6 +161,7 @@ class ProgramNode(ASTNode):
     forms: Dict[str, FormNode] = field(default_factory=dict)
     apis: Dict[str, ApiNode] = field(default_factory=dict)
     flow: Optional[FlowNode] = None
+    database: Optional[DatabaseNode] = None   # MODIFICADO (persistência fase 2)
     # MODIFICADO (SDD): atributos sintetizados da produção raiz `program`:
     # tabela de símbolos e lista final de erros semânticos.
     symtab: Any = field(default=None, repr=False, compare=False)

@@ -104,14 +104,61 @@ def _field_config(form: Any, optional: bool = False) -> Dict[str, Dict[str, Any]
     return result
 
 
+_SHARED_CONNECTION = """
+class _SharedConnection:
+    \"\"\"Conexão única de engine = "memory", protegida por lock (uma requisição por vez).\"\"\"
+
+    def __init__(self):
+        self.connection = sqlite3.connect(':memory:', check_same_thread=False)
+        self.connection.row_factory = sqlite3.Row
+        self.lock = threading.RLock()
+
+    def __enter__(self):
+        self.lock.acquire()
+        return self.connection
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if exc_type is None:
+                self.connection.commit()
+            else:
+                self.connection.rollback()
+        finally:
+            self.lock.release()
+        return False
+
+
+_SHARED = _SharedConnection()
+"""
+
+
 _INIT_DB = """
 def _existing_columns(connection, table):
     return {row['name'] for row in connection.execute(f'PRAGMA table_info({quote_identifier(table)})')}
 
 
+def _check_manual_schema():
+    \"\"\"schema = "manual": não altera nada; só avisa o que falta em relação ao schema.sql.\"\"\"
+    with get_connection() as connection:
+        for table in TABLES:
+            present = _existing_columns(connection, table['name'])
+            if not present:
+                logger.warning('schema = "manual": a tabela %s não existe em %s; execute o dist/schema.sql nesse banco.',
+                               table['name'], DB_NAME)
+                continue
+            missing = [c['name'] for c in table['columns'] if c['name'] not in present]
+            if missing:
+                logger.warning('schema = "manual": faltam colunas na tabela %s: %s; ajuste o banco conforme o dist/schema.sql.',
+                               table['name'], ', '.join(missing))
+
+
 def init_db():
     \"\"\"Cria tabelas e índices que faltam e acrescenta colunas novas (nunca apaga nada).\"\"\"
-    Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
+    if DATABASE['engine'] != 'memory':
+        Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
+    if DATABASE['schema'] == 'manual':
+        _check_manual_schema()
+        return
     with get_connection() as connection:
         for table in TABLES:
             name = table['name']
@@ -151,7 +198,7 @@ def _flow_values(config, payload):
             continue
         try:
             values[name] = _convert_scalar(raw, field_type)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             values[name] = None
     return values
 
@@ -323,6 +370,13 @@ def _render_flask_app(ast: ProgramNode):
     for config in endpoint_configs:
         config["unique"] = unique_by_table[config["table"]]
     schema_sql = render_schema_sql(sql_tables)
+    db_block = getattr(ast, "database", None)
+    props = db_block.properties if db_block is not None else {}
+    database_config = {
+        "engine": props.get("engine", "sqlite"),
+        "path": props.get("path"),
+        "schema": props.get("schema", "auto"),
+    }
 
     w = CodeWriter()
     w.write_line('"""Aplicação Flask gerada automaticamente pelo Askform."""')
@@ -332,6 +386,8 @@ def _render_flask_app(ast: ProgramNode):
     w.write_line("import os")
     w.write_line("import re")
     w.write_line("import sqlite3")
+    if database_config["engine"] == "memory":
+        w.write_line("import threading")
     w.write_line("import uuid")
     w.write_line("from pathlib import Path")
     w.write_line("from werkzeug.utils import secure_filename")
@@ -343,10 +399,19 @@ def _render_flask_app(ast: ProgramNode):
     # data/ ao lado dela, para sobreviverem a apagar dist/ e recompilar.
     w.write_line("DATA_DIR = Path(os.environ.get('ASKFORM_DATA_DIR', BASE_DIR.parent / 'data'))")
     w.write_line("UPLOAD_FOLDER = Path(os.environ.get('ASKFORM_UPLOAD_FOLDER', DATA_DIR / 'uploads'))")
-    w.write_line("DB_NAME = os.environ.get('ASKFORM_DATABASE', str(DATA_DIR / 'database.db'))")
+    # MODIFICADO (persistência fase 2): bloco `database` do .fad. Arquivo do banco:
+    # ASKFORM_DATABASE > path do bloco (relativo a DATA_DIR) > DATA_DIR/database.db.
+    w.write_line(f"DATABASE = {database_config!r}")
+    w.write_line("if DATABASE['engine'] == 'memory':")
+    w.indent()
+    w.write_line("DB_NAME = ':memory:'   # ASKFORM_DATABASE é ignorada: memória não tem arquivo")
+    w.dedent()
+    w.write_line("else:")
+    w.indent()
+    w.write_line("DB_NAME = os.environ.get('ASKFORM_DATABASE', str(DATA_DIR / (DATABASE['path'] or 'database.db')))")
+    w.dedent()
     w.write_line("MAX_CONTENT_LENGTH = int(os.environ.get('ASKFORM_MAX_CONTENT_LENGTH', 16 * 1024 * 1024))")
     w.write_line("app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH")
-    w.write_line("UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)")
     w.write_line("logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))")
     w.write_line("logger = logging.getLogger('askform.generated')")
     w.write_line()
@@ -379,11 +444,21 @@ def _render_flask_app(ast: ProgramNode):
     w.dedent()
     w.write_line()
 
+    if database_config["engine"] == "memory":
+        # MODIFICADO (persistência fase 2): SQLite em memória vive dentro de UMA conexão;
+        # o lock fica preso durante o `with` e a saída faz commit/rollback, então as
+        # rotas continuam usando `with get_connection() as connection`.
+        for line in _SHARED_CONNECTION.strip("\n").split("\n"):
+            w.write_line(line)
+        w.write_line()
     w.write_line("def get_connection():")
     w.indent()
-    w.write_line("connection = sqlite3.connect(DB_NAME, timeout=10)")
-    w.write_line("connection.row_factory = sqlite3.Row")
-    w.write_line("return connection")
+    if database_config["engine"] == "memory":
+        w.write_line("return _SHARED")
+    else:
+        w.write_line("connection = sqlite3.connect(DB_NAME, timeout=10)")
+        w.write_line("connection.row_factory = sqlite3.Row")
+        w.write_line("return connection")
     w.dedent()
     w.write_line()
 
@@ -421,6 +496,26 @@ def _render_flask_app(ast: ProgramNode):
     w.dedent()
     w.write_line()
 
+    w.write_line("_INT_MIN, _INT_MAX = -2 ** 63, 2 ** 63 - 1")
+    w.write_line()
+    w.write_line("def _convert_field(field_name, value, field_type):")
+    w.indent()
+    w.write_line('"""Converte com mensagens claras (nunca a mensagem crua do Python nem um 500)."""')
+    w.write_line("try:")
+    w.indent()
+    w.write_line("return _convert_scalar(value, field_type)")
+    w.dedent()
+    w.write_line("except OverflowError:")
+    w.indent()
+    w.write_line("faixa = f' ({_INT_MIN} a {_INT_MAX})' if field_type == 'integer' else ''")
+    w.write_line("raise ValueError(f'Valor fora do intervalo de {field_type}{faixa}: {field_name}')")
+    w.dedent()
+    w.write_line("except (ValueError, TypeError):")
+    w.indent()
+    w.write_line("raise ValueError(f'Valor inválido para {field_name} (esperado {field_type}).')")
+    w.dedent()
+    w.dedent()
+    w.write_line()
     w.write_line("def _convert_scalar(value, field_type):")
     w.indent()
     w.write_line("if value is None:")
@@ -430,8 +525,16 @@ def _render_flask_app(ast: ProgramNode):
     w.write_line("if field_type == 'string': return str(value)")
     w.write_line("if field_type == 'integer':")
     w.indent()
+    # MODIFICADO (números fora do intervalo): integer = 64 bits com sinal; float não
+    # integral (1.5, 1e30) é recusado em vez de truncado em silêncio.
     w.write_line("if isinstance(value, bool): raise ValueError('inteiro inválido')")
-    w.write_line("return int(value)")
+    w.write_line("if isinstance(value, float):")
+    w.indent()
+    w.write_line("if not value.is_integer(): raise ValueError('inteiro inválido')")
+    w.dedent()
+    w.write_line("number = int(value)")
+    w.write_line("if not _INT_MIN <= number <= _INT_MAX: raise OverflowError('inteiro fora do intervalo')")
+    w.write_line("return number")
     w.dedent()
     w.write_line("if field_type == 'float':")
     w.indent()
@@ -467,12 +570,12 @@ def _render_flask_app(ast: ProgramNode):
     w.write_line("if spec.get('is_array'):")
     w.indent()
     w.write_line("if not isinstance(value, list): value = [value]")
-    w.write_line("converted = [_convert_scalar(item, field_type) for item in value]")
+    w.write_line("converted = [_convert_field(field_name, item, field_type) for item in value]")
     w.write_line("checked_value = converted")
     w.dedent()
     w.write_line("else:")
     w.indent()
-    w.write_line("converted = _convert_scalar(value, field_type)")
+    w.write_line("converted = _convert_field(field_name, value, field_type)")
     w.write_line("checked_value = converted")
     w.dedent()
     w.write_line("minimum, maximum = spec.get('min'), spec.get('max')")
@@ -528,6 +631,7 @@ def _render_flask_app(ast: ProgramNode):
     w.write_line("if not original_name: raise ValueError(f'Nome de arquivo inválido: {field_name}')")
     w.write_line("extension = Path(original_name).suffix.lower()")
     w.write_line("stored_name = f'{uuid.uuid4().hex}{extension}'")
+    w.write_line("UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)   # criada só quando há upload")
     w.write_line("destination = (UPLOAD_FOLDER / stored_name).resolve()")
     w.write_line("if destination.parent != UPLOAD_FOLDER.resolve(): raise ValueError('Caminho de upload inválido')")
     w.write_line("file_storage.save(destination)")
@@ -700,6 +804,12 @@ def _render_flask_app(ast: ProgramNode):
     w.indent()
     w.write_line("_cleanup_saved_files(saved_paths)")
     w.write_line("return _json_error(str(exc), 400)")
+    w.dedent()
+    # MODIFICADO (números fora do intervalo): rede de segurança; o banco nunca causa 500 por tamanho de número.
+    w.write_line("except OverflowError:")
+    w.indent()
+    w.write_line("_cleanup_saved_files(saved_paths)")
+    w.write_line("return _json_error('Número fora do intervalo aceito pelo banco', 400)")
     w.dedent()
     w.write_line("except sqlite3.IntegrityError as exc:")
     w.indent()

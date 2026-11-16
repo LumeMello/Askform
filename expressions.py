@@ -284,6 +284,24 @@ class _Verificador:
         return True
 
 
+_JS_SEGURO = 2 ** 53
+
+
+def _literais(expr: ExprNode) -> List[LiteralExpr]:
+    """Literais da expressão, na ordem do código."""
+    if isinstance(expr, LiteralExpr):
+        return [expr]
+    if isinstance(expr, LogicExpr):
+        return _literais(expr.left) + _literais(expr.right)
+    if isinstance(expr, NotExpr):
+        return _literais(expr.operand)
+    if isinstance(expr, CompareExpr):
+        return _literais(expr.left) + _literais(expr.right)
+    if isinstance(expr, InExpr):
+        return [v for v in expr.values if isinstance(v, LiteralExpr)]
+    return []
+
+
 def checar_condicao(expr: ExprNode, escopo: Escopo, forms: Dict[str, Any]) -> Tuple[List[Diagnostico], List[Diagnostico]]:
     """
     Atributo `tipo` da condição (precisa ser booleana) + avisos.
@@ -308,6 +326,14 @@ def checar_condicao(expr: ExprNode, escopo: Escopo, forms: Dict[str, Any]) -> Tu
         avisos.append((expr.lineno,
             f"O campo opcional '{field_name}' é usado na condição da transição de '{escopo.source_form}'; "
             f"se ficar vazio, a comparação dá falso (use '{field_name} is empty' para tratar esse caso)."))
+
+    # MODIFICADO (números fora do intervalo): o navegador compara com double (JS),
+    # exato só até 2^53; o servidor compara com inteiros exatos do Python.
+    for lit in _literais(expr):
+        if isinstance(lit.value, int) and not isinstance(lit.value, bool) and abs(lit.value) > _JS_SEGURO:
+            avisos.append((lit.lineno,
+                f"O inteiro {lit.value} passa de 2^53: o navegador pode compará-lo de forma "
+                f"diferente do servidor (precisão de 53 bits); o servidor decide o caminho com o valor exato."))
 
     # Aviso: condição constante (nenhum campo na expressão).
     if not expr.deps:
