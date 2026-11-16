@@ -1,0 +1,57 @@
+// Documentação gerada (Parte G). Compile e leia o resultado:
+//   python main.py teste_docs.fad
+//   dist/API.md       -> leitura humana (com diagrama Mermaid do flow e exemplos curl)
+//   dist/openapi.json -> cole em https://editor.swagger.io para ver/testar a API
+// Cobre: lista, arquivo, uuid, date, float, pattern, cabeçalho declarado,
+// bloco database e um flow com dois caminhos (PF/PJ).
+theme Docs {
+  accent_color = "#2563eb";
+}
+
+form TipoStep {
+  tipo: string { label = "PF ou PJ"; required = true; };
+  validate tipo { pattern = "^(PF|PJ)$"; message = "Informe PF ou PJ."; }
+}
+
+form PessoaStep {
+  nome: string { label = "Nome"; required = true; };
+  nascimento: date { label = "Nascimento"; };
+  tags: string[] { label = "Tags"; };
+  validate nome { min = 2; max = 40; }
+}
+
+form EmpresaStep {
+  razao: string { label = "Razão social"; required = true; };
+  capital: float { label = "Capital"; };
+  codigo: uuid;
+  logo: file { label = "Logotipo"; };
+  validate capital { min = 0; }
+}
+
+api CadastroApi {
+  POST "/cadastros" {
+    consumes = CadastroFlow;
+    produces = uuid;
+    headers { "X-Origem": "askform"; };
+  }
+}
+
+api EmpresaApi {
+  POST "/empresas" { consumes = EmpresaStep; produces = uuid; }
+  GET "/empresas" { consumes = EmpresaStep; produces = string; }
+  GET "/empresas/{razao}" { consumes = EmpresaStep; produces = string; }
+  PUT "/empresas/{razao}" { consumes = EmpresaStep; produces = boolean; }
+  PATCH "/empresas/{razao}" { consumes = EmpresaStep; produces = boolean; }
+  DELETE "/empresas/{razao}" { consumes = EmpresaStep; produces = boolean; }
+}
+
+database Dados {
+  engine = "memory";
+}
+
+flow CadastroFlow {
+  TipoStep -> EmpresaStep when tipo == "PJ";
+  TipoStep -> PessoaStep;
+  PessoaStep -> CadastroApi.POST;
+  EmpresaStep -> CadastroApi.POST;
+}
