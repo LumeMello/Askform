@@ -269,6 +269,19 @@ O servidor será iniciado por padrão em `http://127.0.0.1:5000`.
 
 ---
 
+### 2.1 Documentação gerada (`dist/API.md` e `dist/openapi.json`)
+
+Toda compilação bem-sucedida também gera, ao lado do `app.py`, a documentação da API (sem flag; erro de compilação não gera nada):
+
+* **`dist/API.md`** (para ler): visão geral, banco e tabelas, formulários, o flow (diagrama Mermaid, tabela de transições e **todos os caminhos possíveis**, cada um com um `curl` válido), cada endpoint (campos, regras, exemplo `curl`, status), o formato das respostas e os avisos do compilador. Projetos com campo `file` ganham exemplo `multipart` (`-F`).
+* **`dist/openapi.json`** (OpenAPI 3.0.3): cole em [editor.swagger.io](https://editor.swagger.io) ou importe no Postman/Insomnia. Em endpoints de flow, o corpo é um `oneOf` com um esquema por caminho (as condições ficam em `x-askform-condicoes`).
+* **Não diverge do servidor:** a lista de endpoints e campos vem da mesma função que gera o `app.py` (`montar_endpoints`), e os testes executam todos os `curl` do `API.md` contra o servidor gerado e comparam o OpenAPI com `app.url_map`.
+* `produces` e `headers` do `.fad` aparecem como **informativos** (`x-askform-produces`, `x-askform-headers`): o servidor não os usa; responde sempre o formato descrito em "Convenções das respostas".
+
+Exemplo para ver tudo: `python main.py teste_docs.fad`.
+
+---
+
 ### 3. Executando a Interface Web (HTML)
 
 Abra o arquivo HTML gerado (ex: `dist/feedbackform.html`) diretamente no seu navegador de preferência.
@@ -306,10 +319,11 @@ python tests/test_erros.py
 python tests/test_persistencia.py
 python tests/test_numeros.py
 python tests/test_database.py
+python tests/test_docs.py
 python oracle/test_oracle.py
 ```
 
-O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; `test_erros.py` cobre as mensagens de duplicidade e a linha dos erros de endpoint; `test_persistencia.py` cobre `schema.sql`, 409, migração, pasta `data/` e as regras R9–R11; `test_numeros.py` cobre o intervalo de `integer` (servidor e léxico) e o aviso de precisão em condições; `test_database.py` cobre o bloco `database` (gramática, R8, memória, `path`, `schema` manual); o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
+O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; `test_erros.py` cobre as mensagens de duplicidade e a linha dos erros de endpoint; `test_persistencia.py` cobre `schema.sql`, 409, migração, pasta `data/` e as regras R9–R11; `test_numeros.py` cobre o intervalo de `integer` (servidor e léxico) e o aviso de precisão em condições; `test_database.py` cobre o bloco `database` (gramática, R8, memória, `path`, `schema` manual); `test_docs.py` cobre a documentação gerada (exemplos `curl` no servidor real, OpenAPI válido e igual às rotas do Flask, ida e volta de `para_texto`, árvore do `teste.fad` inalterada; usa `openapi-spec-validator` e `jsonschema` se instalados); o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
 
 ---
 

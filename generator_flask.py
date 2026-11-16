@@ -288,10 +288,15 @@ def _flow_runtime_config(ast: ProgramNode) -> Dict[str, Any]:
     return {"start": graph.start, "steps": steps}
 
 
-def _render_flask_app(ast: ProgramNode):
-    """Renderiza a aplicação Flask com middleware CORS e endpoints CRUD.
+def montar_endpoints(ast: ProgramNode) -> Dict[str, Any]:
+    """
+    MODIFICADO (documentação): parte PURA do gerador (sem escrever código), usada
+    tanto pelo app.py quanto por generator_docs.py, para a documentação nunca
+    divergir do servidor.
 
-    Devolve (código do app.py, texto do schema.sql)."""
+    Devolve: configs (um dict por endpoint que grava dados), rotas (Flask),
+    sql_tables e schema_sql (generator_sql) e database_config (bloco `database`).
+    """
     endpoint_configs: List[Dict[str, Any]] = []
     routes: List[Dict[str, Any]] = []
 
@@ -361,6 +366,10 @@ def _render_flask_app(ast: ProgramNode):
                 "method": method,
                 "config_id": config_id,
                 "function": f"endpoint_{config_id}_{method.lower()}",
+                # MODIFICADO (documentação): de onde veio a rota (o app.py ignora estas chaves)
+                "api": api_name,
+                "template": route,
+                "endpoint": endpoint,
             })
 
     # MODIFICADO (persistência): esquema SQL e chaves únicas (campos usados como
@@ -377,6 +386,26 @@ def _render_flask_app(ast: ProgramNode):
         "path": props.get("path"),
         "schema": props.get("schema", "auto"),
     }
+
+    return {
+        "configs": endpoint_configs,
+        "routes": routes,
+        "sql_tables": sql_tables,
+        "schema_sql": schema_sql,
+        "database_config": database_config,
+    }
+
+
+def _render_flask_app(ast: ProgramNode):
+    """Renderiza a aplicação Flask com middleware CORS e endpoints CRUD.
+
+    Devolve (código do app.py, texto do schema.sql)."""
+    montagem = montar_endpoints(ast)
+    endpoint_configs = montagem["configs"]
+    routes = montagem["routes"]
+    sql_tables = montagem["sql_tables"]
+    schema_sql = montagem["schema_sql"]
+    database_config = montagem["database_config"]
 
     w = CodeWriter()
     w.write_line('"""Aplicação Flask gerada automaticamente pelo Askform."""')
@@ -464,7 +493,13 @@ def _render_flask_app(ast: ProgramNode):
 
     # MODIFICADO (persistência): esquema vem do generator_sql (mesmo texto do
     # schema.sql); init_db cria o que falta e só ACRESCENTA colunas.
-    w.write_line(f"TABLES = {sql_tables!r}")
+    # (os metadados estruturados de generator_sql servem à documentação; o app.py
+    # embute só o necessário, o que mantém o app.py idêntico ao de antes)
+    tabelas_app = [
+        {**t, "columns": [{k: c[k] for k in ("name", "create", "add")} for c in t["columns"]]}
+        for t in sql_tables
+    ]
+    w.write_line(f"TABLES = {tabelas_app!r}")
     w.write_line()
     for line in _INIT_DB.strip("\n").split("\n"):
         w.write_line(line)

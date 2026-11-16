@@ -216,6 +216,10 @@ program  [symtab={apis:{A}}, errors=[Erro(0, "Endpoint 'POST /a' consome formul�
 program resolve: "Nope" ∉ symtab.forms ∪ symtab.flows → Erro(0, ...)
 ```
 
+### 3.3 Documentação gerada (sem produções novas)
+
+`dist/API.md` e `dist/openapi.json` (`generator_docs.py`) são só mais um gerador da fase 3: leem a AST **já validada** e não acrescentam produção, ação semântica nem regra. A gramática continua com **109 produções, 0 conflitos**, e a árvore de derivação (e a anotada) do `teste.fad` é a mesma (`tests/golden/teste_reducoes.txt`; `tests/test_docs.py` confere). O único código novo no caminho da compilação é a chamada `generate_docs(ast)` em `main.py`, depois de `generate_html` e `generate_flask`.
+
 ## 6. Correspondência com a versão anterior
 
 | Antes (`semantic.py` antigo) | Agora |

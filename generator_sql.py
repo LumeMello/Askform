@@ -102,6 +102,12 @@ def tabelas(endpoint_configs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     "name": campo,
                     "create": f"{_q(campo)} {tipo}{not_null}{parte_default}{checks}",
                     "add": f"{_q(campo)} {tipo}{parte_default}",
+                    # MODIFICADO (documentação): metadados estruturados (a documentação
+                    # gerada lê estes campos; os textos SQL acima não mudam).
+                    "sql_type": tipo,
+                    "not_null": bool(not_null),
+                    "default": default,
+                    "checks": _checks(campo, spec),
                 })
             tabela = resultado[nome] = {"name": nome, "columns": colunas, "unique": []}
         for param in config["route_params"]:

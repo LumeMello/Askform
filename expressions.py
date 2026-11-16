@@ -343,6 +343,64 @@ def checar_condicao(expr: ExprNode, escopo: Escopo, forms: Dict[str, Any]) -> Tu
 
 
 # ---------------------------------------------------------------------------
+# MODIFICADO (documentação): árvore JSON -> texto na sintaxe do .fad
+# ---------------------------------------------------------------------------
+
+_PREC = {"or": 1, "and": 2, "not": 3}
+
+
+def _lit_texto(valor: Any) -> str:
+    if isinstance(valor, bool):
+        return "true" if valor else "false"
+    if isinstance(valor, str):
+        escapado = valor.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escapado}"'
+    return repr(valor)
+
+
+def para_texto(no: Dict[str, Any], origem: Optional[str] = None) -> str:
+    """
+    Texto da condição na sintaxe do .fad, com o MÍNIMO de parênteses pela
+    precedência (comparação > not > and > or; and/or associam à esquerda).
+    `origem` é a etapa de onde sai a transição: campos dela saem sem prefixo.
+    Ler o texto de volta com o parser dá a mesma árvore (teste de ida e volta).
+    """
+    def prec(n):
+        if n["k"] in ("or", "and"):
+            return _PREC[n["k"]]
+        if n["k"] == "not":
+            return _PREC["not"]
+        return 4                                  # comparação, in, empty, folha
+
+    def filho(n, minimo):
+        t = rec(n)
+        return f"({t})" if prec(n) < minimo else t
+
+    def rec(n):
+        k = n["k"]
+        if k == "field":
+            return n["name"] if n["step"] == origem else f'{n["step"]}.{n["name"]}'
+        if k == "lit":
+            return _lit_texto(n["v"])
+        if k == "cmp":
+            return f'{rec(n["l"])} {n["op"]} {rec(n["r"])}'
+        if k == "in":
+            itens = ", ".join(_lit_texto(v) for v in n["v"])
+            return f'{rec(n["f"])} {"not in" if n["neg"] else "in"} ({itens})'
+        if k == "empty":
+            return f'{rec(n["f"])} is {"not " if n["neg"] else ""}empty'
+        if k == "not":
+            return "not " + filho(n["e"], _PREC["not"])
+        # and / or: associam à esquerda; o filho direito de mesma precedência precisa de parênteses
+        p = _PREC[k]
+        esquerda = filho(n["l"], p)
+        direita = filho(n["r"], p + 1)
+        return f"{esquerda} {k} {direita}"
+
+    return rec(no)
+
+
+# ---------------------------------------------------------------------------
 # Serialização para os geradores
 # ---------------------------------------------------------------------------
 
