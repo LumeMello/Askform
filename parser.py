@@ -49,11 +49,19 @@ from semantic import (
 )
 
 
+# MODIFICADO (mensagens de erro): o PLY trata SyntaxError levantado dentro de uma
+# ação semântica como sinal de erro de sintaxe e o engole (parse() devolvia None
+# e só aparecia "Failed to construct AST"). CompileError herda de Exception, não
+# de SyntaxError, justamente para a mensagem chegar ao main.py.
+class CompileError(Exception):
+    """Erro detectado durante a construção da AST (ex.: nome duplicado)."""
+
+
 def _insert_unique(mapping, key, value, description, lineno=None):
     """Insere um item em um dicionário ou informa uma duplicidade."""
     if key in mapping:
         location = f" na linha {lineno}" if lineno else ""
-        raise SyntaxError(f"{description} duplicado{location}: {key!r}")
+        raise CompileError(f"{description} duplicado{location}: {key!r}")
     mapping[key] = value
 
 
@@ -283,7 +291,7 @@ def p_api_decl(p):
     for endpoint in p[4]:
         identity = (endpoint.method, endpoint.route)
         if identity in seen:
-            raise SyntaxError(
+            raise CompileError(
                 f"Endpoint duplicado na linha {endpoint.lineno}: "
                 f"{endpoint.method} {endpoint.route}"
             )
@@ -307,8 +315,10 @@ def p_endpoint_list(p):
 def p_endpoint_decl(p):
     "endpoint_decl : http_verb STRING_LIT LBRACE endpoint_props RBRACE"
     props = p[4]
+    # MODIFICADO (mensagens de erro): p.lineno(1) é o não-terminal http_verb e vale
+    # 0 sem tracking; a linha vem do token STRING_LIT da rota (mesma linha do verbo).
     node = EndpointNode(
-        lineno=p.lineno(1),
+        lineno=p.lineno(2),
         method=p[1],
         route=p[2],
         consumes=props.get("consumes"),
@@ -316,7 +326,7 @@ def p_endpoint_decl(p):
         headers=props.get("headers", {}),
     )
     # MODIFICADO (SDD) — regra R5 (global): consumes e {param} da rota.
-    # Obs.: lineno continua p.lineno(1) de um não-terminal (0), como antes.
+    # Os erros de R5 saem com a linha da rota (antes: "Linha 0").
     node.checks = [EndpointCheck(node)]
     p[0] = node
 
@@ -575,4 +585,3 @@ def build_parser():
         debug=False,
         errorlog=yacc.NullLogger(),
     )
-    

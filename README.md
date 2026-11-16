@@ -274,10 +274,11 @@ python tests/test_flow.py
 ```bash
 python tests/test_expressions.py
 python tests/test_compat_preE.py
+python tests/test_erros.py
 python oracle/test_oracle.py
 ```
 
-O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
+O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; `test_erros.py` cobre as mensagens de duplicidade e a linha dos erros de endpoint; o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
 
 ---
 
