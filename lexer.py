@@ -38,6 +38,7 @@ reserved = {
     "empty": "EMPTY",
     "validate": "VALIDATE",
     "theme": "THEME",
+    "database": "DATABASE",   # MODIFICADO (persistência fase 2)
     "string": "TYPE_STRING",
     "integer": "TYPE_INT",
     "float": "TYPE_FLOAT",
@@ -200,15 +201,36 @@ def _find_column(input_text: str, lexpos: int) -> int:
     return lexpos - last_newline
 
 
+# MODIFICADO (números fora do intervalo): `integer` é inteiro de 64 bits com sinal
+# (o INTEGER do SQLite). Literal maior que isso, ou decimal que vira infinito,
+# deixava de ser erro e depois dava 500 em todo POST (default) ou ficava
+# inconsistente (max, when).
+INT_MAX = 2 ** 63 - 1
+
+
 def t_FLOAT_LIT(t):
     r"\d+\.\d+"
-    t.value = float(t.value)
+    texto = t.value
+    t.value = float(texto)
+    if t.value == float("inf"):
+        column = _find_column(t.lexer.lexdata, t.lexpos)
+        raise SyntaxError(
+            f"Número decimal fora do intervalo na linha {t.lineno}, coluna {column}: "
+            f"{texto[:20]}{'...' if len(texto) > 20 else ''} (resultaria em infinito)."
+        )
     return t
 
 
 def t_INT_LIT(t):
     r"\d+"
-    t.value = int(t.value)
+    texto = t.value
+    t.value = int(texto)
+    if t.value > INT_MAX:
+        column = _find_column(t.lexer.lexdata, t.lexpos)
+        raise SyntaxError(
+            f"Inteiro fora do intervalo de 64 bits na linha {t.lineno}, coluna {column}: "
+            f"{texto[:25]}{'...' if len(texto) > 25 else ''} (máximo {INT_MAX})."
+        )
     return t
 
 

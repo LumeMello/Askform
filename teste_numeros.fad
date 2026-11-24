@@ -1,0 +1,17 @@
+// Números e o intervalo do banco (integer = 64 bits com sinal).
+//   python main.py teste_numeros.fad && python dist/app.py
+//   POST /itens {"codigo": 9223372036854775807}    -> 201 (limite)
+//   POST /itens {"codigo": 9223372036854775808}    -> 400 "Valor fora do intervalo de integer ..."
+//   POST /itens {"codigo": 1.5}                    -> 400 (antes: gravava 1)
+//   POST /itens {"codigo": 3.0}                    -> 201 (grava 3)
+form ItemForm {
+  codigo: integer { required = true; };
+  qtd: integer { default = 1; };
+  preco: float;
+  validate qtd { min = 0; max = 1000; }
+}
+
+api ItemApi {
+  POST "/itens" { consumes = ItemForm; produces = uuid; }
+  GET "/itens/{codigo}" { consumes = ItemForm; produces = string; }
+}

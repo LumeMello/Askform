@@ -24,6 +24,7 @@ from parser import build_parser
 from semantic import SemanticAnalyzer
 from generator_html import generate_html
 from generator_flask import generate_flask
+from generator_docs import generate_docs   # MODIFICADO (documentação)
 
 def compile_dsl(source_code: str):
     lexer = build_lexer()
@@ -67,6 +68,8 @@ def compile_dsl(source_code: str):
     try:
         generate_html(ast)
         generate_flask(ast)
+        # MODIFICADO (documentação): dist/API.md e dist/openapi.json
+        generate_docs(ast, avisos=[str(w) for w in analyzer.warnings])
     except ValueError as e:
         print(f"Code Generation Failed: {e}")
         return False

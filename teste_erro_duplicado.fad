@@ -1,0 +1,7 @@
+// Erro de nome duplicado: antes só aparecia "Failed to construct AST".
+// Agora: "Campo duplicado na linha 6: 'email'".
+form Cliente {
+  nome: string { required = true; };
+  email: string { required = true; };
+  email: string;
+}

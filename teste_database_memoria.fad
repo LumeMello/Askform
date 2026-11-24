@@ -1,0 +1,19 @@
+// Banco em memória (bloco database, fase 2). Bom para demonstração e testes:
+// nada é gravado em disco e os dados somem ao parar o servidor.
+//   python main.py teste_database_memoria.fad && python dist/app.py
+//   curl -X POST localhost:5000/notas -H "Content-Type: application/json" -d '{"titulo":"a","texto":"oi"}'
+//   (pare e suba de novo: a lista volta vazia)
+form NotaForm {
+  titulo: string { required = true; };
+  texto: string;
+}
+
+api NotaApi {
+  POST "/notas" { consumes = NotaForm; produces = uuid; }
+  GET "/notas" { consumes = NotaForm; produces = string; }
+  GET "/notas/{titulo}" { consumes = NotaForm; produces = string; }
+}
+
+database Dados {
+  engine = "memory";
+}

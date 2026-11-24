@@ -284,6 +284,24 @@ class _Verificador:
         return True
 
 
+_JS_SEGURO = 2 ** 53
+
+
+def _literais(expr: ExprNode) -> List[LiteralExpr]:
+    """Literais da expressão, na ordem do código."""
+    if isinstance(expr, LiteralExpr):
+        return [expr]
+    if isinstance(expr, LogicExpr):
+        return _literais(expr.left) + _literais(expr.right)
+    if isinstance(expr, NotExpr):
+        return _literais(expr.operand)
+    if isinstance(expr, CompareExpr):
+        return _literais(expr.left) + _literais(expr.right)
+    if isinstance(expr, InExpr):
+        return [v for v in expr.values if isinstance(v, LiteralExpr)]
+    return []
+
+
 def checar_condicao(expr: ExprNode, escopo: Escopo, forms: Dict[str, Any]) -> Tuple[List[Diagnostico], List[Diagnostico]]:
     """
     Atributo `tipo` da condição (precisa ser booleana) + avisos.
@@ -309,11 +327,77 @@ def checar_condicao(expr: ExprNode, escopo: Escopo, forms: Dict[str, Any]) -> Tu
             f"O campo opcional '{field_name}' é usado na condição da transição de '{escopo.source_form}'; "
             f"se ficar vazio, a comparação dá falso (use '{field_name} is empty' para tratar esse caso)."))
 
+    # MODIFICADO (números fora do intervalo): o navegador compara com double (JS),
+    # exato só até 2^53; o servidor compara com inteiros exatos do Python.
+    for lit in _literais(expr):
+        if isinstance(lit.value, int) and not isinstance(lit.value, bool) and abs(lit.value) > _JS_SEGURO:
+            avisos.append((lit.lineno,
+                f"O inteiro {lit.value} passa de 2^53: o navegador pode compará-lo de forma "
+                f"diferente do servidor (precisão de 53 bits); o servidor decide o caminho com o valor exato."))
+
     # Aviso: condição constante (nenhum campo na expressão).
     if not expr.deps:
         valor = avaliar_json(para_json(expr, escopo, forms), lambda step, name: None)
         avisos.append((expr.lineno, f"A condição da transição de '{escopo.source_form}' é sempre {'verdadeira' if valor else 'falsa'}."))
     return [], avisos
+
+
+# ---------------------------------------------------------------------------
+# MODIFICADO (documentação): árvore JSON -> texto na sintaxe do .fad
+# ---------------------------------------------------------------------------
+
+_PREC = {"or": 1, "and": 2, "not": 3}
+
+
+def _lit_texto(valor: Any) -> str:
+    if isinstance(valor, bool):
+        return "true" if valor else "false"
+    if isinstance(valor, str):
+        escapado = valor.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escapado}"'
+    return repr(valor)
+
+
+def para_texto(no: Dict[str, Any], origem: Optional[str] = None) -> str:
+    """
+    Texto da condição na sintaxe do .fad, com o MÍNIMO de parênteses pela
+    precedência (comparação > not > and > or; and/or associam à esquerda).
+    `origem` é a etapa de onde sai a transição: campos dela saem sem prefixo.
+    Ler o texto de volta com o parser dá a mesma árvore (teste de ida e volta).
+    """
+    def prec(n):
+        if n["k"] in ("or", "and"):
+            return _PREC[n["k"]]
+        if n["k"] == "not":
+            return _PREC["not"]
+        return 4                                  # comparação, in, empty, folha
+
+    def filho(n, minimo):
+        t = rec(n)
+        return f"({t})" if prec(n) < minimo else t
+
+    def rec(n):
+        k = n["k"]
+        if k == "field":
+            return n["name"] if n["step"] == origem else f'{n["step"]}.{n["name"]}'
+        if k == "lit":
+            return _lit_texto(n["v"])
+        if k == "cmp":
+            return f'{rec(n["l"])} {n["op"]} {rec(n["r"])}'
+        if k == "in":
+            itens = ", ".join(_lit_texto(v) for v in n["v"])
+            return f'{rec(n["f"])} {"not in" if n["neg"] else "in"} ({itens})'
+        if k == "empty":
+            return f'{rec(n["f"])} is {"not " if n["neg"] else ""}empty'
+        if k == "not":
+            return "not " + filho(n["e"], _PREC["not"])
+        # and / or: associam à esquerda; o filho direito de mesma precedência precisa de parênteses
+        p = _PREC[k]
+        esquerda = filho(n["l"], p)
+        direita = filho(n["r"], p + 1)
+        return f"{esquerda} {k} {direita}"
+
+    return rec(no)
 
 
 # ---------------------------------------------------------------------------

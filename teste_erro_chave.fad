@@ -1,0 +1,15 @@
+// Regras R9, R10 e R11 (esperado: 3 erros semânticos).
+//   R9  linha 13: a chave da rota (apelido) não é required;
+//   R11 linha 6 : campo 'id' conflita com a chave automática da tabela;
+//   R10 linha 9 : 'Produto' e 'produto' usariam a mesma tabela.
+form Produto {
+  id: integer { required = true; };
+  apelido: string;
+}
+form produto {
+  nome: string;
+}
+api A {
+  GET "/p/{apelido}" { consumes = Produto; produces = string; }
+  POST "/q" { consumes = produto; produces = uuid; }
+}

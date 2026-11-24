@@ -1,0 +1,20 @@
+// Arquivo de banco escolhido (relativo a data/) e tabelas por sua conta (schema manual).
+//   python main.py teste_database_manual.fad
+//   python dist/app.py    -> sobe, mas avisa no log que a tabela não existe
+//   python -c "import sqlite3; sqlite3.connect('data/clientes.db').executescript(open('dist/schema.sql').read())"
+//   python dist/app.py    -> agora sem aviso; o servidor nunca altera o esquema
+form ClienteForm {
+  email: string { required = true; };
+  nome: string;
+}
+
+api ClienteApi {
+  POST "/clientes" { consumes = ClienteForm; produces = uuid; }
+  GET "/clientes/{email}" { consumes = ClienteForm; produces = string; }
+}
+
+database Dados {
+  engine = "sqlite";
+  path = "clientes.db";
+  schema = "manual";
+}

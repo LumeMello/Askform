@@ -1,0 +1,11 @@
+// Erros de endpoint: antes saíam com "Linha 0"; agora mostram a linha da rota
+// (esperado: linhas 9 e 10).
+form Cliente {
+  nome: string { required = true; };
+}
+
+api ClienteApi {
+  GET "/cliente/{nome}" { consumes = Cliente; produces = string; }
+  POST "/cliente" { consumes = Inexistente; produces = uuid; }
+  PUT "/cliente/{codigo}" { consumes = Cliente; produces = boolean; }
+}

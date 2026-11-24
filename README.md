@@ -7,7 +7,7 @@ O **Askform** é uma linguagem de domínio específico (DSL) e compilador constr
 
 O compilador lê arquivos de especificação (`.fad` / `.askform`), realiza análise léxica, sintática e semântica estrita, e gera automaticamente como artefatos finalizados:
 1. **Página HTML5 responsiva** (`dist/<form_name>.html`) com suporte nativo a `FormData`, validações no lado do cliente, suporte a envio de arquivos e fallback automático de comunicação via `fetch` HTTP.
-2. **Servidor backend em Flask** (`dist/app.py`) dinâmico com persistência automática em banco de dados SQLite (`database.db`), middleware com suporte total a CORS, sanitização de identificadores SQL e tratamento de uploads de arquivos.
+2. **Servidor backend em Flask** (`dist/app.py`) dinâmico com persistência automática em banco de dados SQLite (`data/database.db`, com `dist/schema.sql` gerado), middleware com suporte total a CORS, sanitização de identificadores SQL e tratamento de uploads de arquivos.
 
 📖 **[Acesse a Documentação Completa no Google Drive](https://docs.google.com/document/d/1LmWLQvcHF1gwP22vvsaTMDQxMBQqgxs6z66bm8NaOCc/edit?usp=sharing)**
 
@@ -64,12 +64,12 @@ form ProfileForm {
 
 #### Tipos Primitivos de Campos (`field_type`)
 * `string`: Texto simples.
-* `integer`: Números inteiros.
-* `float`: Números decimais.
+* `integer`: Números inteiros de **64 bits com sinal** (−9223372036854775808 a 9223372036854775807, o `INTEGER` do SQLite). O servidor responde 400 para valor fora do intervalo ou decimal não inteiro (`1.5`; `3.0` vale 3), e o compilador recusa literal inteiro acima de 2⁶³−1 (`default`, `min`, `max`, `when`).
+* `float`: Números decimais (duplas de 64 bits; um literal que vira infinito é erro de compilação).
 * `boolean`: Campo lógico (renderizado como checkbox no HTML).
 * `date`: Data (formato ISO `YYYY-MM-DD`).
 * `uuid`: Identificador único no padrão UUID v4.
-* `file`: Upload de arquivos (armazenado de forma segura no backend em `uploads/`).
+* `file`: Upload de arquivos (armazenado de forma segura no backend em `data/uploads/`).
 
 #### Propriedades de Campo
 * `label = "Texto"`: Rótulo exibido na interface gráfica.
@@ -169,6 +169,7 @@ flow CadastroFlow {
 * **Booleano sozinho:** um campo `boolean` (ou `true`/`false`) já é uma condição: `when possuiDocumento and not menor`.
 * **Lista e vazio:** `campo in ("a", "b")`, `campo not in (...)`, `campo is empty`, `campo is not empty`. As palavras `and or not in is empty` agora são reservadas e não servem como nome de campo.
 * **Campo da condição:** `campo` (da própria etapa de origem) ou `Etapa.campo` (de uma etapa que vem antes em todos os caminhos). Campos `file` e listas (`tipo[]`) não podem ser usados.
+* **Inteiros grandes:** acima de 2⁵³ o navegador (JavaScript) pode comparar de forma diferente do servidor; o compilador avisa e o servidor decide o caminho com o valor exato.
 * **Valor:** literal do mesmo tipo do campo (`"texto"`, `10`, `1.5`, `true`/`false`; datas como `"2024-01-31"`; `uuid` precisa ser um UUID válido).
 * **Campo vazio:** a lógica é de dois valores. Comparação, `in` e `not in` com campo vazio dão falso; `not` apenas inverte; `boolean` ausente vale falso. Para tratar o vazio use `is empty`.
 * **Avisos** (não impedem a compilação nem mudam o código de saída): campo opcional usado na condição (sem `is empty` na mesma condição), condição sempre verdadeira ou falsa, valor repetido em `in (...)`, `is empty` em campo booleano.
@@ -180,6 +181,26 @@ flow CadastroFlow {
 **Saída gerada:** um flow de uma linha gera a página do formulário (`dist/<form>.html`), como antes. Um flow com várias etapas ou com `when` gera uma única página `dist/<flow>.html` com botões **Voltar** e **Próximo** (o último vira **Enviar dados**).
 
 > O antigo bloco `wizard` foi removido: o que ele fazia (etapas em sequência, herança entre etapas e envio para a API) agora é escrito no `flow`.
+
+---
+
+### 5. Bloco `database` (Onde e como guardar os dados)
+
+Opcional e no máximo um por arquivo; pode aparecer em qualquer posição entre os `form`/`api`. Sem ele, vale o padrão: SQLite em `data/database.db`, com o esquema criado e migrado automaticamente.
+
+```dsl
+database Dados {
+  engine = "sqlite";    // "sqlite" (padrão) ou "memory"
+  path   = "meus.db";   // só sqlite; relativo a data/ (um caminho absoluto vale como está)
+  schema = "auto";      // "auto" (padrão) ou "manual"
+}
+```
+
+* **`engine = "memory"`:** o banco vive só na memória do servidor (uma conexão única com trava, uma requisição por vez). Nada é gravado em disco e os dados somem ao parar o servidor; serve para demonstrações e testes e só funciona com um processo. `ASKFORM_DATABASE` é ignorada.
+* **`path`:** arquivo do banco dentro de `data/` (subpastas são criadas). A variável `ASKFORM_DATABASE`, se definida, vence o `path`.
+* **`schema = "manual"`:** o servidor **não cria nem altera nada**; ao subir, só confere as tabelas e colunas e registra no log um aviso do que falta em relação ao `dist/schema.sql`, que você aplica por conta própria. O servidor sobe mesmo assim (as requisições para tabelas ausentes dão erro 500).
+* **Regras verificadas (R8):** só `engine`, `path` e `schema`; todos os valores são texto; `engine` e `schema` com os valores acima; `path` não vazio; `memory` não aceita `path` nem `schema = "manual"`.
+* Só `database` vira palavra reservada; `engine`, `path` e `schema` continuam servindo como nome de campo.
 
 ---
 
@@ -237,7 +258,27 @@ Execute o servidor Flask gerado para habilitar os endpoints e o banco de dados S
 python dist/app.py
 ```
 
-O servidor será iniciado por padrão em `http://127.0.0.1:5000`. O banco de dados SQLite `database.db` e o repositório de uploads `uploads/` serão criados na mesma pasta automaticamente.
+O servidor será iniciado por padrão em `http://127.0.0.1:5000`.
+
+**Persistência:**
+* **Onde ficam os dados:** o banco (`database.db`) e os uploads (`uploads/`) ficam na pasta **`data/`, ao lado do `dist/`** (fora dele), então apagar `dist/` e recompilar não perde nada. Troque com `ASKFORM_DATA_DIR` (pasta toda), `ASKFORM_DATABASE` (só o banco) ou `ASKFORM_UPLOAD_FOLDER` (só os uploads).
+* **`dist/schema.sql`:** o compilador gera o esquema (uma tabela por formulário ou flow consumido) e o `app.py` aplica o mesmo esquema ao subir. `required` vira `NOT NULL` (exceto em flow, onde o servidor decide por caminho), `default` vira `DEFAULT`, `min`/`max` viram `CHECK` (valor em integer/float, tamanho em string) e o `pattern` fica só na aplicação.
+* **Chave da rota:** o campo usado em `{param}` precisa ser `required` (erro de compilação) e vira índice `UNIQUE`. `POST` com chave repetida responde **409**; `PUT`/`PATCH` que repetem a chave de outro registro também.
+* **Mudou o `.fad`?** Campo novo vira coluna nova (anulável, sem `CHECK`) e os dados são mantidos; o servidor nunca apaga coluna nem dado (renomear um campo cria coluna nova e mantém a antiga). Se o banco antigo já tem chaves repetidas, o servidor sobe, avisa no log que não criou o índice único e o `POST` continua devolvendo 409.
+* **Nomes reservados:** um campo chamado `id` (de formulário gravado por endpoint) conflita com a chave automática e é erro; dois formulários gravados que só diferem em maiúsculas usariam a mesma tabela e também são erro.
+
+---
+
+### 2.1 Documentação gerada (`dist/API.md` e `dist/openapi.json`)
+
+Toda compilação bem-sucedida também gera, ao lado do `app.py`, a documentação da API (sem flag; erro de compilação não gera nada):
+
+* **`dist/API.md`** (para ler): visão geral, banco e tabelas, formulários, o flow (diagrama Mermaid, tabela de transições e **todos os caminhos possíveis**, cada um com um `curl` válido), cada endpoint (campos, regras, exemplo `curl`, status), o formato das respostas e os avisos do compilador. Projetos com campo `file` ganham exemplo `multipart` (`-F`).
+* **`dist/openapi.json`** (OpenAPI 3.0.3): cole em [editor.swagger.io](https://editor.swagger.io) ou importe no Postman/Insomnia. Em endpoints de flow, o corpo é um `oneOf` com um esquema por caminho (as condições ficam em `x-askform-condicoes`).
+* **Não diverge do servidor:** a lista de endpoints e campos vem da mesma função que gera o `app.py` (`montar_endpoints`), e os testes executam todos os `curl` do `API.md` contra o servidor gerado e comparam o OpenAPI com `app.url_map`.
+* `produces` e `headers` do `.fad` aparecem como **informativos** (`x-askform-produces`, `x-askform-headers`): o servidor não os usa; responde sempre o formato descrito em "Convenções das respostas".
+
+Exemplo para ver tudo: `python main.py teste_docs.fad`.
 
 ---
 
@@ -274,10 +315,15 @@ python tests/test_flow.py
 ```bash
 python tests/test_expressions.py
 python tests/test_compat_preE.py
+python tests/test_erros.py
+python tests/test_persistencia.py
+python tests/test_numeros.py
+python tests/test_database.py
+python tests/test_docs.py
 python oracle/test_oracle.py
 ```
 
-O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
+O primeiro cobre o flow multi-etapas; `test_expressions.py` cobre a gramática das condições (0 conflitos, árvore do `teste.fad` inalterada), precedência, mensagens, avisos, o avaliador (JS×Python via `node`) e o servidor/navegador (precisam de Flask e Playwright; pulados se faltarem); `test_compat_preE.py` compara condições simples com `oracle/main_preE`; `test_erros.py` cobre as mensagens de duplicidade e a linha dos erros de endpoint; `test_persistencia.py` cobre `schema.sql`, 409, migração, pasta `data/` e as regras R9–R11; `test_numeros.py` cobre o intervalo de `integer` (servidor e léxico) e o aviso de precisão em condições; `test_database.py` cobre o bloco `database` (gramática, R8, memória, `path`, `schema` manual); `test_docs.py` cobre a documentação gerada (exemplos `curl` no servidor real, OpenAPI válido e igual às rotas do Flask, ida e volta de `para_texto`, árvore do `teste.fad` inalterada; usa `openapi-spec-validator` e `jsonschema` se instalados); o último compara o compilador com a versão anterior em programas que não usam os recursos novos.
 
 ---
 

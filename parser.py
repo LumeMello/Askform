@@ -25,6 +25,7 @@ from lexer import tokens
 from symbol_table import (
     ProgramNode,
     ThemeNode,
+    DatabaseNode,
     FormNode,
     FormFieldNode,
     ValidationBlockNode,
@@ -40,6 +41,7 @@ from symbol_table import (
 from semantic import (
     regra_default,
     regra_form,
+    regra_database,
     TransitionCheck,
     Aviso,
     EndpointCheck,
@@ -49,11 +51,19 @@ from semantic import (
 )
 
 
+# MODIFICADO (mensagens de erro): o PLY trata SyntaxError levantado dentro de uma
+# ação semântica como sinal de erro de sintaxe e o engole (parse() devolvia None
+# e só aparecia "Failed to construct AST"). CompileError herda de Exception, não
+# de SyntaxError, justamente para a mensagem chegar ao main.py.
+class CompileError(Exception):
+    """Erro detectado durante a construção da AST (ex.: nome duplicado)."""
+
+
 def _insert_unique(mapping, key, value, description, lineno=None):
     """Insere um item em um dicionário ou informa uma duplicidade."""
     if key in mapping:
         location = f" na linha {lineno}" if lineno else ""
-        raise SyntaxError(f"{description} duplicado{location}: {key!r}")
+        raise CompileError(f"{description} duplicado{location}: {key!r}")
     mapping[key] = value
 
 
@@ -72,6 +82,13 @@ def p_program(p):
             _insert_unique(program_node.forms, decl.name, decl, "Formulário", decl.lineno)
         elif isinstance(decl, ApiNode):
             _insert_unique(program_node.apis, decl.name, decl, "API", decl.lineno)
+        elif isinstance(decl, DatabaseNode):
+            # MODIFICADO (persistência fase 2): no máximo um bloco database por arquivo.
+            if program_node.database is not None:
+                raise CompileError(
+                    f"Bloco database duplicado na linha {decl.lineno}: {decl.name!r} "
+                    f"(já existe {program_node.database.name!r}; use um só)")
+            program_node.database = decl
 
     # MODIFICADO (SDD) — regra R7 (raiz): sintetiza program.symtab e, com a
     # tabela completa, resolve as pendências (R2, R4, R5, R6) gerando
@@ -102,7 +119,8 @@ def p_body_declarations(p):
 
 def p_body_declaration(p):
     """body_declaration : form_decl
-                        | api_decl"""
+                        | api_decl
+                        | database_decl"""
     p[0] = p[1]
 
 
@@ -134,6 +152,39 @@ def p_theme_props(p):
 
 def p_theme_prop(p):
     "theme_prop : IDENTIFIER EQUALS literal_val SEMICOLON"
+    p[0] = {p[1]: p[3]}
+
+
+# ---------------------------------------------------------------------------
+# Banco de dados (MODIFICADO — persistência fase 2)
+#
+# `database` é mais uma alternativa de body_declaration (e não um filho novo de
+# `program`), então a árvore de derivação dos programas que não usam o bloco,
+# como o teste.fad, não muda. As chaves são IDENTIFIER genéricos (como no tema):
+# engine, path e schema NÃO são palavras reservadas; a regra R8 confere os nomes.
+# ---------------------------------------------------------------------------
+
+def p_database_decl(p):
+    "database_decl : DATABASE IDENTIFIER LBRACE database_props RBRACE"
+    node = DatabaseNode(lineno=p.lineno(1), name=p[2], properties=p[4])
+    # regra R8 (local): atributo sintetizado database_decl.checks
+    node.checks = regra_database(node)
+    p[0] = node
+
+
+def p_database_props(p):
+    """database_props : database_props database_prop
+                      | empty"""
+    if len(p) == 3:
+        props = dict(p[1])
+        _merge_unique(props, p[2], "Propriedade de database", p.lineno(2))
+        p[0] = props
+    else:
+        p[0] = {}
+
+
+def p_database_prop(p):
+    "database_prop : IDENTIFIER EQUALS literal_val SEMICOLON"
     p[0] = {p[1]: p[3]}
 
 
@@ -283,7 +334,7 @@ def p_api_decl(p):
     for endpoint in p[4]:
         identity = (endpoint.method, endpoint.route)
         if identity in seen:
-            raise SyntaxError(
+            raise CompileError(
                 f"Endpoint duplicado na linha {endpoint.lineno}: "
                 f"{endpoint.method} {endpoint.route}"
             )
@@ -307,8 +358,10 @@ def p_endpoint_list(p):
 def p_endpoint_decl(p):
     "endpoint_decl : http_verb STRING_LIT LBRACE endpoint_props RBRACE"
     props = p[4]
+    # MODIFICADO (mensagens de erro): p.lineno(1) é o não-terminal http_verb e vale
+    # 0 sem tracking; a linha vem do token STRING_LIT da rota (mesma linha do verbo).
     node = EndpointNode(
-        lineno=p.lineno(1),
+        lineno=p.lineno(2),
         method=p[1],
         route=p[2],
         consumes=props.get("consumes"),
@@ -316,7 +369,7 @@ def p_endpoint_decl(p):
         headers=props.get("headers", {}),
     )
     # MODIFICADO (SDD) — regra R5 (global): consumes e {param} da rota.
-    # Obs.: lineno continua p.lineno(1) de um não-terminal (0), como antes.
+    # Os erros de R5 saem com a linha da rota (antes: "Linha 0").
     node.checks = [EndpointCheck(node)]
     p[0] = node
 
@@ -575,4 +628,3 @@ def build_parser():
         debug=False,
         errorlog=yacc.NullLogger(),
     )
-    

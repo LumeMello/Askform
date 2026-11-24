@@ -29,7 +29,7 @@ Todos os atributos são **sintetizados** (calculados de baixo para cima na redu�
 
 ## 3. Tabela de produções × regras semânticas
 
-Natureza: **cópia** (repassa o atributo do filho), **constrói AST** (monta nó ou estrutura), **erro de parser** (checagem de duplicidade que já existia no parser e que continua igual), **R1–R7** (regras semânticas da seção 4).
+Natureza: **cópia** (repassa o atributo do filho), **constrói AST** (monta nó ou estrutura), **erro de parser** (checagem de duplicidade que já existia no parser e que continua igual), **R1–R11** (regras semânticas da seção 4).
 
 | # | Produção | Regra semântica | Natureza | Implementação |
 |---|---|---|---|---|
@@ -140,7 +140,21 @@ Substituem as antigas #68, #69 e #76–#78 (`condition`, `condition_value`). A n
 
 Regras semânticas novas (dentro de **R4**, `expressions.checar_condicao`): campo/formulário inexistente, `file` e lista proibidos, valor incompatível (`uuid` precisa ser válido), operador de ordem só em integer/float/date, campo×campo só de tipos compatíveis (integer×float é permitido), operando solto precisa ser boolean, e os **avisos** (campo opcional na condição, condição constante — `deps = ∅` —, valor repetido em `in`, `is empty` em boolean). Em **R6**, a regra dos dominadores percorre todas as referências `Etapa.campo` da expressão.
 
-## 4. Regras semânticas R1–R7
+### 3.2 Produções do bloco `database` (persistência fase 2)
+
+Entram **sem alterar a árvore de derivação do `teste.fad`**: `database_decl` é mais uma alternativa de `body_declaration` (e não um filho novo de `program`), então os programas sem o bloco reduzem exatamente as mesmas produções de antes (conferido por `tests/golden/teste_reducoes.txt`). A gramática passa de 104 para **109 produções, 0 conflitos**.
+
+| Produção | Regra semântica | Tipo | Função |
+|---|---|---|---|
+| `body_declaration → database_decl` | cópia (`val = database_decl.node`) | cópia | `p_body_declaration` |
+| `database_decl → DATABASE IDENT { database_props }` | `node = DatabaseNode(IDENT.lexval, database_props.props)`; `node.checks = regra_database(node)` → **R8** (local) | constrói AST + **R8** | `p_database_decl` + `semantic.regra_database` |
+| `database_props → database_props database_prop` | união das chaves; chave repetida → erro de parser | acumula | `p_database_props` |
+| `database_props → empty` | `props = {}` | constrói | `p_database_props` |
+| `database_prop → IDENT = literal_val ;` | `{IDENT.lexval: literal_val.val}` | constrói | `p_database_prop` |
+
+`p_program` guarda o bloco em `ProgramNode.database` e levanta `CompileError` se houver um segundo. As chaves são `IDENTIFIER` genéricos (como no `theme`), então `engine`, `path` e `schema` não são palavras reservadas; só `database` é.
+
+## 4. Regras semânticas R1–R11
 
 Há dois tipos de regra:
 
@@ -153,13 +167,17 @@ Há dois tipos de regra:
 | **R2** | `field_decl` (#19) → resolvida em `program` | global | `default = Form.campo`: form de origem inexistente → `Referência inter-etapas para formulário inexistente '…'.`; campo inexistente → `Campo '…' não existe na etapa de origem '…'.`; tipos diferentes → `Incompatibilidade de tipos na herança: A.x (t1) -> B.y (t2).` | linha da referência (os dois primeiros) / linha do campo (o terceiro) |
 | **R3** | `form_decl` (#14) | local | `validate` de campo inexistente → `Validação referencia campo inexistente '…'.`; `min`/`max` em tipo fora de integer/float/string → `Regra '…' é incompatível com campo '…' do tipo '…'.`; `pattern` em campo não-string → `Regra pattern aplicada a campo não-string '…'.`; regex inválida → `Expressão regular inválida no pattern: …` | linha do `validate` |
 | **R4** | `transition` (#63) → `program` | global | origem inexistente → `Flow '…' referencia origem inexistente '…'.`; etapa destino inexistente → `Flow '…' referencia etapa inexistente '…'.`; API inexistente → `Flow '…' referencia API inexistente '…'.`; verbo ausente → `API destino '…' não suporta o verbo '…' no flow.`; condição: form/campo inexistente, campo `file` ou lista, valor de tipo incompatível, data/uuid inválido, operador de ordem (`<`, `<=`, `>`, `>=`) fora de integer/float/date, campos de tipos incompatíveis numa comparação, operando solto não booleano (ver 3.1); **avisos** (`Aviso Semântico`) só se não houve erro na condição | linha da transição |
-| **R5** | `endpoint_decl` (#47) → `program` | global | `consumes` não é form nem o flow → `Endpoint '… …' consome formulário ou flow inexistente '…'.`; `{param}` não é campo do form consumido → `Parâmetro de rota '{…}' não declarado no formulário '…'.`; se consome o flow, `{param}` não é campo de nenhuma etapa → `Parâmetro de rota '{…}' não declarado em nenhuma etapa do flow '…'.` | `0` (mantém o comportamento anterior: `lineno` de não-terminal) |
+| **R5** | `endpoint_decl` (#47) → `program` | global | `consumes` não é form nem o flow → `Endpoint '… …' consome formulário ou flow inexistente '…'.`; `{param}` não é campo do form consumido → `Parâmetro de rota '{…}' não declarado no formulário '…'.`; se consome o flow, `{param}` não é campo de nenhuma etapa → `Parâmetro de rota '{…}' não declarado em nenhuma etapa do flow '…'.` | linha do token `STRING_LIT` da rota (`endpoint_decl` usa `p.lineno(2)`; antes `p.lineno(1)` era o não-terminal `http_verb` e dava `0`) |
 | **R6** | `flow_decl` (#60) → `program` | global | nome do flow igual ao de um form (sem diferenciar maiúsculas) → erro; depois resolve os R4 das transições, na ordem. Se não houve erro e o flow não é de uma linha só, analisa o grafo (`flow_graph.FlowGraph`): etapa sem saída; transição depois do caminho padrão (nunca usada); etapa só com transições `when`; ciclo; etapa inalcançável a partir da inicial; campo repetido entre etapas; herança `default = Etapa.campo` ou condição `Etapa.campo` de etapa que não vem antes em **todos** os caminhos (dominadores); envio depois de várias etapas para endpoint que não consome o flow | linha da transição (ou do campo); ciclo e nome na linha do flow |
-| **R7** | `program` (#1) | raiz | monta `symtab` e resolve as pendências de R2, R4, R5 e R6 na ordem: forms (campos, depois `validate`) → apis → flow | — |
+| **R7** | `program` (#1) | raiz | monta `symtab` e resolve as pendências de R2, R4, R5, R6, R9, R10 e R11 na ordem: database (R8, já calculada) → forms (campos, `validate`, R10/R11) → apis (R5/R9) → flow | — |
+| **R8** | `database_decl` (3.2) | local | propriedade fora de `engine`/`path`/`schema` → `Propriedade desconhecida '…' no bloco database '…' (use engine, path ou schema).`; valor que não é texto; `engine` fora de `sqlite`/`memory`; `schema` fora de `auto`/`manual`; `path` vazio; `memory` com `path` (`…que não tem arquivo: remova 'path'.`) ou com `schema = \"manual\"` | linha do bloco |
+| **R9** | `endpoint_decl` (#47) → `program` (dentro de `EndpointCheck`) | global | todo `{param}` da rota, já declarado, precisa ser campo `required = true` (do form consumido ou, se consome o flow, de alguma etapa) → `Parâmetro de rota '{…}' precisa ser um campo obrigatório (required = true) do formulário '…': ele identifica o registro.` (vira índice `UNIQUE` no banco) | linha da rota |
+| **R10** | `form_decl` (#14) → `program` (`TabelaCheck`) | global | dois forms gravados por algum endpoint cujos nomes só diferem em maiúsculas → `Os formulários 'A' e 'a' usam a mesma tabela 'a' (nomes que só diferem em maiúsculas).` (erro no segundo) | linha do form |
+| **R11** | `form_decl` (#14) → `program` (`TabelaCheck`) | global | campo `id` (sem diferenciar maiúsculas) em form gravado por endpoint → `O campo '…' do formulário '…' conflita com a chave primária automática 'id' da tabela; renomeie o campo.` | linha do campo |
 
 ### Ordem das mensagens
 
-`program.errors` sai sempre na mesma ordem: para cada form (na ordem do código) os checks dos campos e em seguida os do `validate`; depois as APIs (endpoint a endpoint); por fim o flow (nome, transições na ordem e depois o grafo). Para programas sem os recursos novos, a saída é idêntica à da versão anterior (verificado por `oracle/test_oracle.py`).
+`program.errors` sai sempre na mesma ordem: para cada form (na ordem do código) os checks dos campos, em seguida os do `validate` e por fim R10/R11; depois as APIs (endpoint a endpoint); por fim o flow (nome, transições na ordem e depois o grafo). Para programas sem os recursos novos, a saída é idêntica à da versão anterior (verificado por `oracle/test_oracle.py`).
 
 ### Atributo herdado simulado
 
@@ -198,6 +216,10 @@ program  [symtab={apis:{A}}, errors=[Erro(0, "Endpoint 'POST /a' consome formul�
 program resolve: "Nope" ∉ symtab.forms ∪ symtab.flows → Erro(0, ...)
 ```
 
+### 3.3 Documentação gerada (sem produções novas)
+
+`dist/API.md` e `dist/openapi.json` (`generator_docs.py`) são só mais um gerador da fase 3: leem a AST **já validada** e não acrescentam produção, ação semântica nem regra. A gramática continua com **109 produções, 0 conflitos**, e a árvore de derivação (e a anotada) do `teste.fad` é a mesma (`tests/golden/teste_reducoes.txt`; `tests/test_docs.py` confere). O único código novo no caminho da compilação é a chamada `generate_docs(ast)` em `main.py`, depois de `generate_html` e `generate_flask`.
+
 ## 6. Correspondência com a versão anterior
 
 | Antes (`semantic.py` antigo) | Agora |
@@ -218,5 +240,9 @@ program resolve: "Nope" ∉ symtab.forms ∪ symtab.flows → Erro(0, ...)
 - `pattern` em campo não-string com regex inválida gera duas mensagens para o mesmo bloco.
 - Endpoint sem `consumes` não é verificado; um flow de uma linha só (`Form -> Api.VERBO;`) confere só o verbo, não se o endpoint consome a origem, e não passa pela análise de grafo de R6 (um form dele pode herdar de outro form, como antes).
 - O tema não tem nenhuma checagem semântica; nomes iguais em tipos diferentes (um `form` e uma `api`, por exemplo) são aceitos. A exceção nova é o `flow`, que não pode ter o nome de um `form`, porque os dois podem aparecer em `consumes`.
-- Os erros de endpoint saem com `Linha 0`.
+- **Corrigido (era "Linha 0"):** os erros de endpoint agora saem com a linha da rota.
+- **Nomes duplicados** (campo, form, api, endpoint, bloco `validate`, propriedades, cabeçalho) levantam `parser.CompileError` com a linha. Antes usavam `SyntaxError` dentro da ação, que o PLY engole (só "Failed to construct AST" e, com declarações depois do duplicado, formulários descartados em silêncio). `CompileError` herda de `Exception` de propósito. A compilação para no primeiro duplicado.
 - A árvore de derivação do `teste.fad` não mudou com as expressões: ele só usa `condition_opt → empty`, e `tests/golden/teste_reducoes.txt` (sequência de reduções) é conferida por `tests/test_expressions.py`.
+- **Persistência (fase 1):** nenhuma produção nova (continuam 104). R9–R11 são verificações pendentes (`EndpointCheck`, `TabelaCheck`) resolvidas em `program`. O esquema SQL (`generator_sql.py`) é gerado a partir dos mesmos campos, `required`, `default`, `min` e `max` que a validação do `app.py` usa, para o banco nunca rejeitar o que a aplicação aceita. Detalhes: `README.md` (seção Persistência).
+- **Números fora do intervalo (F.3):** `INT_LIT` acima de 2⁶³−1 e `FLOAT_LIT` que vira infinito são **erros léxicos** (com linha e coluna), tratados no analisador léxico; nenhuma produção muda. O servidor confere o intervalo de `integer` e recusa decimal não inteiro. Em condições, inteiro acima de 2⁵³ gera `Aviso` (precisão do JavaScript).
+- **Persistência (fase 2):** o bloco `database` (3.2, R8) escolhe `engine` (`sqlite` ou `memory`), `path` e `schema` (`auto` ou `manual`); o `app.py` embute a escolha em `DATABASE`. O gerador de HTML ignora o bloco.
