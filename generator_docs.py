@@ -49,6 +49,8 @@ def _candidatos_padrao(padrao: str) -> List[str]:
     if m:
         for alt in m.group(1).split("|"):
             lista.append(alt)
+    for n in re.findall(r"(?:\[0-9\]|\\d)\{(\d+)\}", padrao):
+        lista.append(("1234567890" * 5)[: int(n)])
     lista += ["abc", "a", "A", "1", "123", "12345678900", "a@b.com", "exemplo", "Exemplo 1",
               "2026-01-01", "(11) 91234-5678", "12.345.678/0001-90", "123.456.789-00", "ABC-1234"]
     return lista
@@ -272,10 +274,20 @@ def _caminhos_do_flow(flow: Dict[str, Any], ast: ProgramNode,
                       campos: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     runtime = flow["runtime"]
     saida = []
+    vistos = set()
     for caminho in _todos_caminhos(runtime):
+        # transições diferentes que levam às MESMAS etapas e ao mesmo envio são o mesmo
+        # caminho para quem chama a API (os campos aceitos são os mesmos): uma entrada só
+        chave = (tuple(caminho["steps"]), json.dumps(caminho["submit"], sort_keys=True, default=str))
+        if chave in vistos:
+            continue
+        vistos.add(chave)
         condicoes = []
         for etapa, i in caminho["last"]:
             transicoes = runtime["steps"][etapa]["transitions"]
+            escolhida = transicoes[i]
+            if sum(1 for t in transicoes if (t["goto"], t["submit"]) == (escolhida["goto"], escolhida["submit"])) > 1:
+                continue        # várias transições levam ao mesmo destino: a condição não decide o caminho
             # texto das condições: as anteriores falsas, a escolhida verdadeira
             for j, t in enumerate(transicoes[: i + 1]):
                 if t["when"] is None:

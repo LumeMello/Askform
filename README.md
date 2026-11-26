@@ -278,7 +278,7 @@ Toda compilação bem-sucedida também gera, ao lado do `app.py`, a documentaç�
 * **Não diverge do servidor:** a lista de endpoints e campos vem da mesma função que gera o `app.py` (`montar_endpoints`), e os testes executam todos os `curl` do `API.md` contra o servidor gerado e comparam o OpenAPI com `app.url_map`.
 * `produces` e `headers` do `.fad` aparecem como **informativos** (`x-askform-produces`, `x-askform-headers`): o servidor não os usa; responde sempre o formato descrito em "Convenções das respostas".
 
-Exemplo para ver tudo: `python main.py teste_docs.fad`.
+Exemplo para ver tudo: `python main.py teste_docs.fad`. O `teste_completo.fad` junta **todas** as funcionalidades num só arquivo (tema, todos os tipos, `validate`, `default` literal e `Form.campo`, todos os verbos, headers, bloco `database`, flow com todos os operadores de condição, upload) e é o melhor para demonstração: `python main.py teste_completo.fad`, depois `python dist/app.py` e abra `dist/cadastroflow.html`.
 
 ---
 
