@@ -4,6 +4,33 @@ Definição Dirigida pela Sintaxe do compilador Askform: para cada uma das **109
 
 Todos os atributos são **sintetizados** (calculados de baixo para cima na redução), que é o que o PLY suporta nativamente.
 
+## 0. Alfabeto da linguagem
+
+**Σ (fora de comentários e strings)** = letras `a–z A–Z`, dígitos `0–9`, sublinhado `_`, os símbolos `{ } [ ] ( ) : ; , . = < > ! - "` e os separadores espaço, tabulação, retorno de carro (`\r`) e quebra de linha (`\n`) (`/` só aparece abrindo comentário). Qualquer outro caractere fora de comentário ou string é **erro léxico** (`Caractere ilegal ... na linha L, coluna C`). Dentro de comentários e de strings entra qualquer caractere Unicode (a string só não pode conter quebra de linha crua; `\"`, `\\` etc. são escapes).
+
+| Classe | Expressão regular (`lexer.py`) | Símbolos de Σ usados |
+|---|---|---|
+| `IDENTIFIER` (e palavras reservadas) | `[a-zA-Z_][a-zA-Z0-9_]*` (depois consulta a tabela `reserved`) | letras, dígitos, `_` |
+| `INT_LIT` | `\d+` (erro léxico se > 2⁶³−1) | dígitos |
+| `FLOAT_LIT` | `\d+\.\d+` (erro léxico se virar infinito) | dígitos, `.` |
+| `STRING_LIT` | `"([^\\\n]\|(\\.))*?"` | `"` e qualquer caractere (com escapes) |
+| comentário (descartado) | `//[^\n]*` ou `/* ... */` | `/`, `*` e qualquer caractere |
+| `ARROW` | `->` | `-`, `>` |
+| `EQ` `NE` `LE` `GE` `LT` `GT` | `==` `!=` `<=` `>=` `<` `>` | `= ! < >` |
+| `EQUALS` | `=` | `=` |
+| `LBRACE` `RBRACE` `LBRACKET` `RBRACKET` `LPAREN` `RPAREN` | `{ } [ ] ( )` | delimitadores |
+| `COLON` `SEMICOLON` `COMMA` `DOT` | `: ; , .` | pontuação |
+
+**Palavras reservadas** (viram token próprio em vez de `IDENTIFIER`):
+
+- estrutura: `form` `api` `flow` `theme` `database` `validate` `when`
+- tipos: `string` `integer` `float` `boolean` `date` `uuid` `file`
+- propriedades: `label` `default` `required` `min` `max` `pattern` `message` `consumes` `produces` `headers`
+- valores e condições: `true` `false` `and` `or` `not` `in` `is` `empty`
+- verbos HTTP (maiúsculas): `GET` `POST` `PUT` `DELETE` `PATCH`
+
+Novas na extensão do trabalho: `and or not in is empty` (expressões), `database` (persistência), os operadores `== != <= >= < >` e `(` `)`.
+
 ## 1. Notação
 
 - `X₁` é a ocorrência de `X` do lado direito quando `X` também aparece à esquerda (recursão).
